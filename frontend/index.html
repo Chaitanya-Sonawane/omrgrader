@@ -51,8 +51,15 @@
   .sub{ font-size:13px; color:#666; margin:0 0 18px; }
   .grid-key{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-bottom:18px; }
   .key-cell{ border:1px solid var(--rule); border-radius:4px; padding:8px 10px; }
-  .key-cell label{ font-family:var(--mono); font-size:11px; color:var(--ink-blue); display:block; margin-bottom:4px; }
-  .key-cell select{ width:100%; font-family:var(--mono); padding:5px; border:1px solid var(--rule); border-radius:3px; background:#fff; }
+  .key-cell label{ font-family:var(--mono); font-size:11px; color:var(--ink-blue); display:block; margin-bottom:6px; }
+  .opt-row{ display:flex; gap:6px; }
+  .opt-btn{
+    flex:1; font-family:var(--mono); font-size:13px; padding:7px 0; cursor:pointer;
+    border:1px solid var(--rule); border-radius:50%; background:#fff; color:var(--ink-blue);
+    aspect-ratio:1/1; line-height:1; transition:background .12s,color .12s,border-color .12s;
+  }
+  .opt-btn:hover{ border-color:var(--ink-blue); }
+  .opt-btn.selected{ background:var(--ink-blue); color:#fff; border-color:var(--ink-blue); }
   .row{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; }
   .field label{ font-size:12px; display:block; margin-bottom:4px; color:#555; }
   .field input, .field textarea{
@@ -131,7 +138,7 @@
   <!-- ANSWER KEY -->
   <section class="panel active" id="panel-key">
     <h2>Answer key</h2>
-    <p class="sub">40 questions, options 1&ndash;4 &mdash; matching your NMMS answer sheet. Set each, or paste in bulk.</p>
+    <p class="sub">40 questions, options 1&ndash;4 &mdash; matching your NMMS answer sheet. Click the correct option for each (click again to clear), or paste in bulk.</p>
 
     <div class="row">
       <div class="field">
@@ -252,12 +259,30 @@ for(let q=1;q<=40;q++){
   const cell = document.createElement("div");
   cell.className = "key-cell";
   cell.innerHTML = `<label>Q${q}</label>
-    <select data-q="${q}">
-      <option value="">-</option>
-      <option value="1">1</option><option value="2">2</option>
-      <option value="3">3</option><option value="4">4</option>
-    </select>`;
+    <div class="opt-row" data-q="${q}">
+      <button type="button" class="opt-btn" data-opt="1">1</button>
+      <button type="button" class="opt-btn" data-opt="2">2</button>
+      <button type="button" class="opt-btn" data-opt="3">3</button>
+      <button type="button" class="opt-btn" data-opt="4">4</button>
+    </div>`;
   keyGrid.appendChild(cell);
+}
+
+// click an option to select it (click again to clear)
+keyGrid.addEventListener("click", e=>{
+  const btn = e.target.closest(".opt-btn");
+  if(!btn) return;
+  const row = btn.parentElement;
+  const wasSelected = btn.classList.contains("selected");
+  row.querySelectorAll(".opt-btn").forEach(b=>b.classList.remove("selected"));
+  if(!wasSelected) btn.classList.add("selected");
+});
+
+function setKeyValue(q, a){
+  const row = keyGrid.querySelector(`.opt-row[data-q="${q}"]`);
+  if(!row || a<1 || a>4) return;
+  row.querySelectorAll(".opt-btn").forEach(b=>
+    b.classList.toggle("selected", parseInt(b.dataset.opt)===a));
 }
 
 document.getElementById("applyBulk").onclick = ()=>{
@@ -267,16 +292,16 @@ document.getElementById("applyBulk").onclick = ()=>{
     const parts = tok.split(/\s+/);
     if(parts.length>=2){
       const q = parseInt(parts[0]), a = parseInt(parts[1]);
-      const sel = keyGrid.querySelector(`select[data-q="${q}"]`);
-      if(sel && a>=1 && a<=4) sel.value = a;
+      setKeyValue(q, a);
     }
   });
 };
 
 document.getElementById("saveKey").onclick = async ()=>{
   const answers = {};
-  keyGrid.querySelectorAll("select").forEach(sel=>{
-    if(sel.value) answers[sel.dataset.q] = parseInt(sel.value);
+  keyGrid.querySelectorAll(".opt-row").forEach(row=>{
+    const sel = row.querySelector(".opt-btn.selected");
+    if(sel) answers[row.dataset.q] = parseInt(sel.dataset.opt);
   });
   const marks_per_correct = parseFloat(document.getElementById("marksPerCorrect").value)||1;
   const negative_marking = parseFloat(document.getElementById("negMarking").value)||0;
