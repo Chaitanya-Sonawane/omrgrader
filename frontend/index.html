@@ -251,12 +251,22 @@ async function parseJSON(res){
   try{
     return JSON.parse(text);
   }catch(_){
-    const looksHtml = text.trim().startsWith("<");
-    throw new Error(
-      looksHtml
-        ? "The server returned a web page instead of data. The app may not be connected to the backend API (check OMR_API_BASE), or the backend is unavailable."
-        : "Unexpected non-JSON response from the server."
-    );
+    const body = (text || "").trim();
+    const looksHtml = body.startsWith("<");
+    // Render returns a plain-text "Not Found" with header
+    // `x-render-routing: no-server` when no backend service is running at the
+    // configured URL - the single most common reason scanning "doesn't work".
+    const noServer = /not found/i.test(body) || res.status === 404;
+    const base = (typeof window !== "undefined" && window.OMR_API_BASE) || "(same origin)";
+    if(noServer || looksHtml){
+      throw new Error(
+        "Can't reach the backend API at " + base + " (got a \"" +
+        (body.slice(0, 40) || res.status) + "\" response, not data). " +
+        "Make sure the backend service is deployed and running, and that " +
+        "OMR_API_BASE in config.js points to its live URL."
+      );
+    }
+    throw new Error("Unexpected non-JSON response from the server (status " + res.status + ").");
   }
 }
 
