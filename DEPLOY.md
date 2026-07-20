@@ -5,7 +5,9 @@ Repo: https://github.com/Chaitanya-Sonawane/omrgrader
 Architecture: FastAPI **backend on Render**, static **frontend on Netlify**
 (frontend calls the backend via `window.OMR_API_BASE` in `frontend/config.js`).
 
-## 1. Backend on Render (via render.yaml blueprint)
+## 1. Backend on Render
+
+### Recommended: Blueprint (uses render.yaml)
 
 1. Go to https://dashboard.render.com → **New +** → **Blueprint**.
 2. Connect your GitHub account and pick the `omrgrader` repo.
@@ -14,6 +16,19 @@ Architecture: FastAPI **backend on Render**, static **frontend on Netlify**
    `uvicorn app:app --host 0.0.0.0 --port $PORT`, health check `/api/health`).
 4. Click **Apply** and wait for the first deploy to go live.
 5. Copy the service URL, e.g. `https://omrgrader-backend.onrender.com`.
+
+### If you created a plain Web Service (build fails with "No such file: requirements.txt")
+
+That error means Render is building from the **repo root**, not `backend/`.
+Two ways to fix it:
+
+- **Easiest:** In the service's **Settings**, set **Root Directory** = `backend`,
+  keep **Build Command** = `pip install -r requirements.txt` and
+  **Start Command** = `uvicorn app:app --host 0.0.0.0 --port $PORT`, then redeploy.
+- **Or leave Root Directory empty** — the repo now also has root-level
+  `requirements.txt`, `runtime.txt` and a `Procfile`, so a root build works too:
+  - Build Command: `pip install -r requirements.txt`
+  - Start Command: `cd backend && uvicorn app:app --host 0.0.0.0 --port $PORT`
 
 ## 2. Point the frontend at the backend
 
