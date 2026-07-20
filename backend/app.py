@@ -17,6 +17,7 @@ Endpoints:
 """
 import io
 import json
+import os
 from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -284,5 +285,10 @@ def health():
     return {"status": "ok"}
 
 
-# serve the frontend (single-page app) at /
-app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
+# serve the frontend (single-page app) at / when it is bundled alongside the
+# backend. Resolve the path relative to this file (not the current working
+# directory) and skip the mount if the folder isn't present (e.g. on Render,
+# where the frontend is deployed separately on Netlify).
+_FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
+if os.path.isdir(_FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=_FRONTEND_DIR, html=True), name="frontend")

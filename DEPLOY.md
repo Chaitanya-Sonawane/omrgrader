@@ -56,6 +56,16 @@ netlify deploy --prod # publishes the "frontend" dir (see netlify.toml)
 Or via the Netlify dashboard: **Add new site → Import from Git → pick `omrgrader`**.
 `netlify.toml` already sets the publish directory to `frontend` with no build step.
 
+## Python version
+
+Render's default for new services is Python 3.14, whose fresh wheels can break
+imports (uvicorn then reports `Could not import module "app"`). The repo pins
+Python **3.11.9** so the tested wheels are used. Render honors these in this
+order of precedence: `PYTHON_VERSION` env var (set in `render.yaml`) → the
+`.python-version` file → `runtime.txt`. `runtime.txt` alone is no longer
+reliably honored, so keep `.python-version` (and, for dashboard-created
+services, set `PYTHON_VERSION=3.11.9`).
+
 ## Notes
 - Backend CORS is open (`allow_origins=["*"]`), so the Netlify origin can call Render.
 - Render's free tier sleeps when idle; the first request after idle is slow to wake.
