@@ -1,6 +1,15 @@
 [build]
-  publish = "frontend"
+  # Build/run from the frontend directory so Netlify's language detection does
+  # NOT read the repo-root .python-version / runtime.txt (those exist only for
+  # the Render backend). This static site needs no Python; scoping the base to
+  # "frontend" prevents Netlify's mise from trying (and failing) to install it.
+  base = "frontend"
+  publish = "."
   command = ""
+
+[build.environment]
+  # Belt-and-suspenders: disable Netlify's automatic Python provisioning.
+  PYTHON_VERSION = ""
 
 [[headers]]
   for = "/*"
