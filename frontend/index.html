@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OMR Grader</title>
+<style>
+  :root{
+    --paper:#F7F4EC;
+    --ink:#1E2A38;
+    --ink-blue:#28466B;
+    --rule:#C9BFA8;
+    --pen-red:#B23A2F;
+    --pen-green:#2F7A4F;
+    --amber:#C08A2E;
+    --card:#FFFFFF;
+    --mono: "JetBrains Mono","SFMono-Regular",Consolas,monospace;
+    --serif: "Georgia","Iowan Old Style",serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background-image:
+      linear-gradient(var(--rule) 1px, transparent 1px);
+    background-size: 100% 34px;
+    background-attachment:local;
+  }
+  header{
+    padding:28px 32px 18px; border-bottom:2px solid var(--ink);
+    background:var(--paper);
+    display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:10px;
+  }
+  header h1{
+    font-family:var(--serif); font-size:28px; margin:0; letter-spacing:.3px;
+  }
+  header h1 span{ color:var(--pen-red); }
+  header .tag{ font-family:var(--mono); font-size:12px; color:var(--ink-blue); text-transform:uppercase; letter-spacing:1.5px;}
+  main{ max-width:1080px; margin:0 auto; padding:24px 20px 80px; }
+  .tabs{ display:flex; gap:6px; margin-bottom:22px; }
+  .tab-btn{
+    font-family:var(--mono); font-size:13px; letter-spacing:.5px; text-transform:uppercase;
+    padding:9px 16px; border:1.5px solid var(--ink); background:transparent; color:var(--ink);
+    cursor:pointer; border-radius:3px 3px 0 0; border-bottom:none;
+  }
+  .tab-btn.active{ background:var(--ink); color:var(--paper); }
+  .panel{ display:none; background:var(--card); border:1.5px solid var(--ink); border-radius:2px;
+          padding:26px; box-shadow: 4px 4px 0 rgba(30,42,56,0.08); }
+  .panel.active{ display:block; }
+  h2{ font-family:var(--serif); font-size:20px; margin:0 0 4px; }
+  .sub{ font-size:13px; color:#666; margin:0 0 18px; }
+  .grid-key{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-bottom:18px; }
+  .key-cell{ border:1px solid var(--rule); border-radius:4px; padding:8px 10px; }
+  .key-cell label{ font-family:var(--mono); font-size:11px; color:var(--ink-blue); display:block; margin-bottom:4px; }
+  .key-cell select{ width:100%; font-family:var(--mono); padding:5px; border:1px solid var(--rule); border-radius:3px; background:#fff; }
+  .row{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; }
+  .field label{ font-size:12px; display:block; margin-bottom:4px; color:#555; }
+  .field input, .field textarea{
+    font-family:var(--mono); padding:7px 9px; border:1px solid var(--rule); border-radius:3px; width:220px;
+  }
+  textarea#bulkKey{ width:100%; height:70px; }
+  button.primary{
+    font-family:var(--mono); text-transform:uppercase; letter-spacing:.6px; font-size:12.5px;
+    background:var(--ink-blue); color:#fff; border:none; padding:10px 18px; border-radius:3px; cursor:pointer;
+  }
+  button.primary:hover{ background:var(--ink); }
+  button.ghost{
+    font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:.5px;
+    background:transparent; border:1.5px solid var(--ink); padding:8px 14px; border-radius:3px; cursor:pointer;
+  }
+  .capture-modes{ display:flex; gap:10px; margin-bottom:18px; }
+  .mode-card{
+    flex:1; border:1.5px dashed var(--rule); border-radius:6px; padding:18px; text-align:center; cursor:pointer;
+  }
+  .mode-card.selected{ border-color:var(--ink-blue); background:#F0F3F8; }
+  .mode-card h3{ margin:6px 0 4px; font-size:15px; }
+  .mode-card p{ margin:0; font-size:12px; color:#666; }
+  #videoWrap{ position:relative; max-width:480px; display:none; }
+  #video{ width:100%; border-radius:6px; border:1.5px solid var(--ink); display:block; }
+  #liveOverlay{
+    position:absolute; left:0; right:0; bottom:0; padding:10px 12px;
+    background:rgba(30,42,56,0.78); color:#fff; border-radius:0 0 6px 6px;
+    font-family:var(--mono); font-size:13px;
+  }
+  #liveMsg{ font-weight:700; letter-spacing:.4px; }
+  #liveMsg.ready{ color:#7BE495; }
+  #liveMeta{ font-size:11px; opacity:.85; margin-top:3px; }
+  #confBar{ height:5px; background:rgba(255,255,255,.25); border-radius:3px; margin-top:6px; overflow:hidden; }
+  #confFill{ height:100%; width:0%; background:var(--amber); transition:width .15s; }
+  #confFill.ready{ background:#7BE495; }
+  #canvas{ display:none; }
+  #preview{ max-width:320px; border:1.5px solid var(--ink); border-radius:6px; margin-top:10px; display:none; }
+  #dropzone{
+    border:2px dashed var(--rule); border-radius:8px; padding:30px; text-align:center; cursor:pointer;
+  }
+  #dropzone.drag{ border-color:var(--ink-blue); background:#F0F3F8; }
+  .student-meta{ display:flex; gap:12px; margin:14px 0; flex-wrap:wrap; }
+  #scanStatus{ font-family:var(--mono); font-size:13px; margin-top:12px; white-space:pre-wrap; }
+  .badge{ display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-family:var(--mono); }
+  .badge.correct{ background:#E3F3E8; color:var(--pen-green); }
+  .badge.wrong{ background:#FBE7E4; color:var(--pen-red); }
+  .badge.blank, .badge.multiple{ background:#FBF0DC; color:var(--amber); }
+  .badge.not_detected{ background:#EAEAEA; color:#555; }
+  table{ width:100%; border-collapse:collapse; margin-top:14px; font-size:13px; }
+  th,td{ padding:7px 9px; border-bottom:1px solid var(--rule); text-align:left; }
+  th{ font-family:var(--mono); font-size:11px; text-transform:uppercase; color:var(--ink-blue); }
+  .dash-stats{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+  .stat{ background:#F0F3F8; border-radius:6px; padding:12px 16px; min-width:120px; }
+  .stat .n{ font-family:var(--mono); font-size:22px; font-weight:700; color:var(--ink-blue); }
+  .stat .l{ font-size:11px; color:#666; text-transform:uppercase; letter-spacing:.4px; }
+  .export-row{ display:flex; gap:10px; margin:16px 0; }
+  #qgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(58px,1fr)); gap:5px; margin-top:12px; font-family:var(--mono); font-size:12px; }
+  #qgrid div{ padding:5px; text-align:center; border-radius:3px; border:1px solid var(--rule); }
+  .hint{ font-size:12px; color:#888; margin-top:6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OMR <span>Grader</span></h1>
+  <div class="tag">Scan &middot; Compare &middot; Result</div>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="key">1. Answer Key</button>
+    <button class="tab-btn" data-tab="scan">2. Scan Sheet</button>
+    <button class="tab-btn" data-tab="results">3. Results</button>
+  </div>
+
+  <!-- ANSWER KEY -->
+  <section class="panel active" id="panel-key">
+    <h2>Answer key</h2>
+    <p class="sub">40 questions, options 1&ndash;4 &mdash; matching your NMMS answer sheet. Set each, or paste in bulk.</p>
+
+    <div class="row">
+      <div class="field">
+        <label>Marks per correct answer</label>
+        <input type="number" id="marksPerCorrect" value="1" step="0.5" />
+      </div>
+      <div class="field">
+        <label>Negative marking (per wrong)</label>
+        <input type="number" id="negMarking" value="0" step="0.25" />
+      </div>
+    </div>
+
+    <div class="field" style="max-width:640px; margin-bottom:16px;">
+      <label>Bulk paste (format: "1 2, 2 4, 3 1 ..." or one "Q Answer" per line)</label>
+      <textarea id="bulkKey" placeholder="1 2
+2 4
+3 1
+..."></textarea>
+      <button class="ghost" id="applyBulk" style="margin-top:6px;">Apply bulk entry</button>
+    </div>
+
+    <div class="grid-key" id="keyGrid"></div>
+    <button class="primary" id="saveKey">Save answer key</button>
+    <span class="hint" id="keyStatus"></span>
+  </section>
+
+  <!-- SCAN -->
+  <section class="panel" id="panel-scan">
+    <h2>Scan an answer sheet</h2>
+    <p class="sub">Capture with your camera or upload a photo. Works with tilted, slightly shadowed phone photos.</p>
+
+    <div class="capture-modes">
+      <div class="mode-card selected" id="modeUpload">
+        <h3>&#128193; Upload Image</h3>
+        <p>JPG / PNG, drag & drop</p>
+      </div>
+      <div class="mode-card" id="modeCamera">
+        <h3>&#128247; Camera Capture</h3>
+        <p>Use your device camera</p>
+      </div>
+    </div>
+
+    <div id="uploadArea">
+      <div id="dropzone">Drop image here or click to choose a file
+        <input type="file" id="fileInput" accept="image/*" style="display:none" />
+      </div>
+    </div>
+
+    <div id="cameraArea" style="display:none;">
+      <div id="videoWrap">
+        <video id="video" autoplay playsinline muted></video>
+        <div id="liveOverlay">
+          <div id="liveMsg">Starting&hellip;</div>
+          <div id="liveMeta"></div>
+          <div id="confBar"><div id="confFill"></div></div>
+        </div>
+      </div>
+      <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="ghost" id="startCam">Start camera</button>
+        <button class="primary" id="snapCam" disabled>Capture photo</button>
+        <label style="font-size:12px; font-family:var(--mono);">
+          <input type="checkbox" id="autoCapture" checked /> Auto capture when steady
+        </label>
+      </div>
+      <canvas id="canvas"></canvas>
+    </div>
+
+    <img id="preview" />
+
+    <div class="student-meta">
+      <div class="field"><label>Student ID / Roll No.</label><input id="studentId" placeholder="e.g. 8138" /></div>
+      <div class="field"><label>Student name (optional)</label><input id="studentName" placeholder="e.g. Bhosale Sudarshan" /></div>
+    </div>
+
+    <button class="primary" id="scanBtn">Scan & score this sheet</button>
+    <div id="scanStatus"></div>
+    <div id="qgrid"></div>
+  </section>
+
+  <!-- RESULTS -->
+  <section class="panel" id="panel-results">
+    <h2>Results</h2>
+    <div class="dash-stats" id="dashStats"></div>
+    <div class="export-row">
+      <button class="ghost" onclick="window.open(API+'/api/export/excel','_blank')">Export Excel (.xlsx)</button>
+      <button class="ghost" onclick="window.open(API+'/api/export/pdf','_blank')">Export PDF</button>
+      <button class="ghost" id="clearResults">Clear all results</button>
+    </div>
+    <table id="resultsTable">
+      <thead><tr><th>ID</th><th>Name</th><th>Correct</th><th>Wrong</th><th>Blank</th><th>Marks</th><th>%</th><th>Grade</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</main>
+
+<script src="config.js"></script>
+<script>
+// API base: same-origin by default; set window.OMR_API_BASE in config.js
+// to the Render backend URL when the frontend is hosted separately (e.g. Netlify).
+const API = ((typeof window !== "undefined" && window.OMR_API_BASE) || "").replace(/\/$/, "");
+let selectedFile = null;
+let stream = null;
+
+// ---- tabs ----
+document.querySelectorAll(".tab-btn").forEach(btn=>{
+  btn.onclick = ()=>{
+    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-"+btn.dataset.tab).classList.add("active");
+    if(btn.dataset.tab === "results") loadResults();
+  };
+});
+
+// ---- answer key grid ----
+const keyGrid = document.getElementById("keyGrid");
+for(let q=1;q<=40;q++){
+  const cell = document.createElement("div");
+  cell.className = "key-cell";
+  cell.innerHTML = `<label>Q${q}</label>
+    <select data-q="${q}">
+      <option value="">-</option>
+      <option value="1">1</option><option value="2">2</option>
+      <option value="3">3</option><option value="4">4</option>
+    </select>`;
+  keyGrid.appendChild(cell);
+}
+
+document.getElementById("applyBulk").onclick = ()=>{
+  const text = document.getElementById("bulkKey").value;
+  const tokens = text.split(/[\n,]/).map(t=>t.trim()).filter(Boolean);
+  tokens.forEach(tok=>{
+    const parts = tok.split(/\s+/);
+    if(parts.length>=2){
+      const q = parseInt(parts[0]), a = parseInt(parts[1]);
+      const sel = keyGrid.querySelector(`select[data-q="${q}"]`);
+      if(sel && a>=1 && a<=4) sel.value = a;
+    }
+  });
+};
+
+document.getElementById("saveKey").onclick = async ()=>{
+  const answers = {};
+  keyGrid.querySelectorAll("select").forEach(sel=>{
+    if(sel.value) answers[sel.dataset.q] = parseInt(sel.value);
+  });
+  const marks_per_correct = parseFloat(document.getElementById("marksPerCorrect").value)||1;
+  const negative_marking = parseFloat(document.getElementById("negMarking").value)||0;
+  const res = await fetch(API+"/api/answer-key", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({answers, marks_per_correct, negative_marking})
+  });
+  const data = await res.json();
+  document.getElementById("keyStatus").textContent = `Saved ${data.questions} answers.`;
+};
+
+// ---- mode switch ----
+document.getElementById("modeUpload").onclick = ()=>{
+  document.getElementById("modeUpload").classList.add("selected");
+  document.getElementById("modeCamera").classList.remove("selected");
+  document.getElementById("uploadArea").style.display = "block";
+  document.getElementById("cameraArea").style.display = "none";
+  stopCamera();
+};
+document.getElementById("modeCamera").onclick = ()=>{
+  document.getElementById("modeCamera").classList.add("selected");
+  document.getElementById("modeUpload").classList.remove("selected");
+  document.getElementById("uploadArea").style.display = "none";
+  document.getElementById("cameraArea").style.display = "block";
+};
+
+// ---- upload ----
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+dropzone.onclick = ()=>fileInput.click();
+dropzone.ondragover = e=>{e.preventDefault(); dropzone.classList.add("drag");};
+dropzone.ondragleave = ()=>dropzone.classList.remove("drag");
+dropzone.ondrop = e=>{
+  e.preventDefault(); dropzone.classList.remove("drag");
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+};
+fileInput.onchange = ()=>{ if(fileInput.files.length) handleFile(fileInput.files[0]); };
+
+function handleFile(file){
+  selectedFile = file;
+  const preview = document.getElementById("preview");
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = "block";
+}
+
+// ---- camera + live auto-capture ----
+const liveMsg = document.getElementById("liveMsg");
+const liveMeta = document.getElementById("liveMeta");
+const confFill = document.getElementById("confFill");
+let liveTimer = null;            // frame-check loop handle
+let checking = false;            // a frame-check request is in flight
+let capturing = false;           // an auto-capture is being processed
+const sessionId = "cam-" + Math.random().toString(36).slice(2);
+
+document.getElementById("startCam").onclick = async ()=>{
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment", width:1280, height:1280}});
+    const video = document.getElementById("video");
+    video.srcObject = stream;
+    document.getElementById("videoWrap").style.display="block";
+    document.getElementById("snapCam").disabled = false;
+    capturing = false;
+    const fd = new FormData(); fd.append("session_id", sessionId);
+    fetch(API+"/api/frame-check/reset", {method:"POST", body: fd}).catch(()=>{});
+    startLiveLoop();
+  }catch(err){
+    alert("Camera access failed: "+err.message);
+  }
+};
+
+function grabFrame(maxDim, quality){
+  const video = document.getElementById("video");
+  if(!video.videoWidth) return Promise.resolve(null);
+  const canvas = document.getElementById("canvas");
+  const scale = Math.min(1, maxDim / Math.max(video.videoWidth, video.videoHeight));
+  canvas.width = Math.round(video.videoWidth * scale);
+  canvas.height = Math.round(video.videoHeight * scale);
+  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+  return new Promise(res=>canvas.toBlob(res, "image/jpeg", quality));
+}
+
+function startLiveLoop(){
+  stopLiveLoop();
+  // ~15 checks/sec keeps the preview smooth and validation latency low;
+  // overlapping requests are skipped so slow networks degrade gracefully.
+  liveTimer = setInterval(async ()=>{
+    if(checking || capturing || !stream) return;
+    checking = true;
+    try{
+      const blob = await grabFrame(640, 0.7);
+      if(!blob) return;
+      const fd = new FormData();
+      fd.append("file", blob, "frame.jpg");
+      fd.append("session_id", sessionId);
+      const res = await fetch(API+"/api/frame-check", {method:"POST", body: fd});
+      if(!res.ok) return;
+      const q = await res.json();
+      renderLive(q);
+      if(q.is_ready && document.getElementById("autoCapture").checked && !capturing){
+        capturing = true;
+        stopLiveLoop();
+        await doAutoCapture();
+      }
+    }catch(err){
+      liveMsg.textContent = "Connection lost";
+    }finally{
+      checking = false;
+    }
+  }, 66);
+}
+
+function stopLiveLoop(){
+  if(liveTimer){ clearInterval(liveTimer); liveTimer = null; }
+}
+
+function renderLive(q){
+  const ready = q.is_ready;
+  liveMsg.textContent = (q.messages && q.messages.length)? q.messages.join(" \u00b7 ") : "Checking\u2026";
+  liveMsg.classList.toggle("ready", ready);
+  confFill.style.width = q.confidence + "%";
+  confFill.classList.toggle("ready", ready);
+  const m = q.metrics || {};
+  const parts = [`conf ${q.confidence}%`, `steady ${m.stability ?? 0}/20`];
+  if(m.blur != null) parts.push(`sharp ${m.blur}`);
+  if(m.tilt != null) parts.push(`tilt ${m.tilt}\u00b0`);
+  liveMeta.textContent = parts.join("  \u00b7  ");
+}
+
+async function doAutoCapture(){
+  liveMsg.textContent = "Capturing\u2026";
+  const statusEl = document.getElementById("scanStatus");
+  try{
+    const blob = await grabFrame(2000, 0.95);   // full-quality capture frame
+    if(!blob) throw new Error("no frame");
+    selectedFile = new File([blob], "auto-capture.jpg", {type:"image/jpeg"});
+    const preview = document.getElementById("preview");
+    preview.src = URL.createObjectURL(blob);
+    preview.style.display = "block";
+
+    statusEl.textContent = "Auto-captured. Processing & scanning\u2026";
+    const fd = new FormData();
+    fd.append("file", selectedFile);
+    fd.append("student_id", document.getElementById("studentId").value);
+    fd.append("student_name", document.getElementById("studentName").value);
+    const res = await fetch(API+"/api/auto-capture", {method:"POST", body: fd});
+    const data = await res.json();
+    if(!res.ok){
+      statusEl.textContent = "Auto-capture scan failed: "+(data.detail||JSON.stringify(data));
+      capturing = false; startLiveLoop();
+      return;
+    }
+    liveMsg.textContent = "Captured";
+    renderScanResult(data, statusEl);
+    stopCamera();
+  }catch(err){
+    statusEl.textContent = "Auto-capture failed: "+err.message;
+    capturing = false;
+    startLiveLoop();
+  }
+}
+
+function renderScanResult(data, statusEl){
+  if(data.scored === false){
+    statusEl.textContent =
+`Scanned (no answer key set \u2014 answers detected but not scored).
+Quality: sharpness=${data.quality.blur_score}, brightness=${data.quality.brightness}, bubbles found=${data.quality.bubbles_detected}/160
+${data.warnings.length? "Warnings: "+data.warnings.join("; ") : ""}`;
+    const qgrid = document.getElementById("qgrid");
+    qgrid.innerHTML = "";
+    Object.values(data.answers).forEach(a=>{
+      const div = document.createElement("div");
+      div.className = "badge " + (a.selected? "correct" : "blank");
+      div.textContent = `Q${a.question}:${a.selected ?? "-"}`;
+      qgrid.appendChild(div);
+    });
+    return;
+  }
+  statusEl.textContent =
+`Score: ${data.total_marks} / ${data.max_marks}  (${data.percentage}%)  Grade: ${data.grade}
+Correct: ${data.correct}  Wrong: ${data.wrong}  Blank: ${data.blank}  Multiple: ${data.multiple}  Not detected: ${data.not_detected}
+Quality: sharpness=${data.quality.blur_score}, brightness=${data.quality.brightness}, bubbles found=${data.quality.bubbles_detected}/160
+${data.warnings.length? "Warnings: "+data.warnings.join("; ") : ""}`;
+  const qgrid = document.getElementById("qgrid");
+  qgrid.innerHTML = "";
+  data.question_results.forEach(qr=>{
+    const div = document.createElement("div");
+    div.className = "badge "+qr.status;
+    div.textContent = `Q${qr.question}:${qr.student_answer ?? "-"}`;
+    qgrid.appendChild(div);
+  });
+}
+
+document.getElementById("snapCam").onclick = async ()=>{
+  const blob = await grabFrame(2000, 0.92);
+  if(!blob) return;
+  selectedFile = new File([blob], "capture.jpg", {type:"image/jpeg"});
+  const preview = document.getElementById("preview");
+  preview.src = URL.createObjectURL(blob);
+  preview.style.display = "block";
+};
+
+function stopCamera(){
+  stopLiveLoop();
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+  document.getElementById("videoWrap").style.display="none";
+  document.getElementById("snapCam").disabled = true;
+}
+
+// ---- scan & score ----
+document.getElementById("scanBtn").onclick = async ()=>{
+  if(!selectedFile){ alert("Choose or capture an image first."); return; }
+  const statusEl = document.getElementById("scanStatus");
+  statusEl.textContent = "Scanning...";
+  const fd = new FormData();
+  fd.append("file", selectedFile);
+  fd.append("student_id", document.getElementById("studentId").value);
+  fd.append("student_name", document.getElementById("studentName").value);
+  try{
+    const res = await fetch(API+"/api/scan-and-score", {method:"POST", body: fd});
+    const data = await res.json();
+    if(!res.ok){ statusEl.textContent = "Error: "+(data.detail||JSON.stringify(data)); return; }
+    renderScanResult(data, statusEl);
+  }catch(err){
+    statusEl.textContent = "Request failed: "+err.message;
+  }
+};
+
+// ---- results tab ----
+async function loadResults(){
+  const res = await fetch(API+"/api/results");
+  const data = await res.json();
+  const dash = data.dashboard || {};
+  const dashStats = document.getElementById("dashStats");
+  dashStats.innerHTML = "";
+  const items = [
+    ["Scanned", dash.students_scanned ?? 0],
+    ["Highest", dash.highest_marks ?? "-"],
+    ["Lowest", dash.lowest_marks ?? "-"],
+    ["Average", dash.average_marks ?? "-"],
+    ["Pass %", dash.pass_percent!=null? dash.pass_percent+"%" : "-"],
+  ];
+  items.forEach(([l,n])=>{
+    const d = document.createElement("div");
+    d.className = "stat";
+    d.innerHTML = `<div class="n">${n}</div><div class="l">${l}</div>`;
+    dashStats.appendChild(d);
+  });
+
+  const tbody = document.querySelector("#resultsTable tbody");
+  tbody.innerHTML = "";
+  data.results.forEach(r=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${r.student_id||"-"}</td><td>${r.student_name||"-"}</td>
+      <td>${r.correct}</td><td>${r.wrong}</td><td>${r.blank}</td>
+      <td>${r.total_marks}</td><td>${r.percentage}%</td><td>${r.grade}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById("clearResults").onclick = async ()=>{
+  if(!confirm("Clear all scanned results?")) return;
+  await fetch(API+"/api/results", {method:"DELETE"});
+  loadResults();
+};
+</script>
+</body>
+</html>
