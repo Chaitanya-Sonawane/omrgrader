@@ -356,11 +356,47 @@ let checking = false;            // a frame-check request is in flight
 let capturing = false;           // an auto-capture is being processed
 const sessionId = "cam-" + Math.random().toString(36).slice(2);
 
+async function openCamera(){
+  // getUserMedia only exists in secure contexts (https / localhost). On mobile
+  // over plain http it is undefined, which is the usual "camera won't open".
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    if(!window.isSecureContext){
+      throw new Error("Camera needs a secure (https) connection. Open the site over https.");
+    }
+    throw new Error("This browser does not support camera access.");
+  }
+  // Prefer the rear camera at a decent resolution, but keep every dimension as
+  // an IDEAL (not exact) value so phones whose cameras can't do 1280x1280 don't
+  // reject the request with OverconstrainedError. Fall back to any camera.
+  const attempts = [
+    {video:{facingMode:{ideal:"environment"}, width:{ideal:1280}, height:{ideal:1280}}},
+    {video:{facingMode:{ideal:"environment"}}},
+    {video:true},
+  ];
+  let lastErr = null;
+  for(const constraints of attempts){
+    try{
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    }catch(err){
+      lastErr = err;
+      // Overconstrained/NotFound -> try a looser constraint set; anything else
+      // (permission denied, no device) will fail the looser ones too, so stop.
+      if(err && (err.name === "NotAllowedError" || err.name === "SecurityError")) break;
+    }
+  }
+  throw lastErr || new Error("Unable to open camera");
+}
+
 document.getElementById("startCam").onclick = async ()=>{
+  const btn = document.getElementById("startCam");
+  btn.disabled = true;
   try{
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment", width:1280, height:1280}});
+    stream = await openCamera();
     const video = document.getElementById("video");
     video.srcObject = stream;
+    // iOS Safari (and some Android browsers) need an explicit play() call even
+    // with the autoplay attribute; ignore the harmless AbortError it may throw.
+    try{ await video.play(); }catch(_){}
     document.getElementById("videoWrap").style.display="block";
     document.getElementById("snapCam").disabled = false;
     capturing = false;
@@ -368,7 +404,10 @@ document.getElementById("startCam").onclick = async ()=>{
     fetch(API+"/api/frame-check/reset", {method:"POST", body: fd}).catch(()=>{});
     startLiveLoop();
   }catch(err){
-    alert("Camera access failed: "+err.message);
+    const name = err && err.name ? err.name+": " : "";
+    alert("Camera access failed: "+name+(err.message||err));
+  }finally{
+    btn.disabled = false;
   }
 };
 
