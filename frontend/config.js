@@ -8,4 +8,4 @@
 //
 // Leave it empty ("") to call the backend on the same origin (e.g. when the
 // backend itself serves this page).
-window.OMR_API_BASE = "";
+window.OMR_API_BASE = "https://omrgrader-backend.onrender.com";

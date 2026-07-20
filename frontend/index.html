@@ -242,6 +242,24 @@ const API = ((typeof window !== "undefined" && window.OMR_API_BASE) || "").repla
 let selectedFile = null;
 let stream = null;
 
+// Safely parse a fetch Response as JSON. If the server returns HTML (e.g. a
+// Netlify 404 page because OMR_API_BASE isn't pointed at the backend, or the
+// backend returned an error page), don't blow up with the cryptic
+// "Unexpected token '<'" error - surface a clear, actionable message instead.
+async function parseJSON(res){
+  const text = await res.text();
+  try{
+    return JSON.parse(text);
+  }catch(_){
+    const looksHtml = text.trim().startsWith("<");
+    throw new Error(
+      looksHtml
+        ? "The server returned a web page instead of data. The app may not be connected to the backend API (check OMR_API_BASE), or the backend is unavailable."
+        : "Unexpected non-JSON response from the server."
+    );
+  }
+}
+
 // ---- tabs ----
 document.querySelectorAll(".tab-btn").forEach(btn=>{
   btn.onclick = ()=>{
@@ -309,8 +327,12 @@ document.getElementById("saveKey").onclick = async ()=>{
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({answers, marks_per_correct, negative_marking})
   });
-  const data = await res.json();
-  document.getElementById("keyStatus").textContent = `Saved ${data.questions} answers.`;
+  try{
+    const data = await parseJSON(res);
+    document.getElementById("keyStatus").textContent = `Saved ${data.questions} answers.`;
+  }catch(err){
+    document.getElementById("keyStatus").textContent = "Error saving key: "+err.message;
+  }
 };
 
 // ---- mode switch ----
@@ -486,7 +508,7 @@ async function doAutoCapture(){
     fd.append("student_id", document.getElementById("studentId").value);
     fd.append("student_name", document.getElementById("studentName").value);
     const res = await fetch(API+"/api/auto-capture", {method:"POST", body: fd});
-    const data = await res.json();
+    const data = await parseJSON(res);
     if(!res.ok){
       statusEl.textContent = "Auto-capture scan failed: "+(data.detail||JSON.stringify(data));
       capturing = false; startLiveLoop();
@@ -560,7 +582,7 @@ document.getElementById("scanBtn").onclick = async ()=>{
   fd.append("student_name", document.getElementById("studentName").value);
   try{
     const res = await fetch(API+"/api/scan-and-score", {method:"POST", body: fd});
-    const data = await res.json();
+    const data = await parseJSON(res);
     if(!res.ok){ statusEl.textContent = "Error: "+(data.detail||JSON.stringify(data)); return; }
     renderScanResult(data, statusEl);
   }catch(err){
@@ -571,7 +593,7 @@ document.getElementById("scanBtn").onclick = async ()=>{
 // ---- results tab ----
 async function loadResults(){
   const res = await fetch(API+"/api/results");
-  const data = await res.json();
+  const data = await parseJSON(res);
   const dash = data.dashboard || {};
   const dashStats = document.getElementById("dashStats");
   dashStats.innerHTML = "";
