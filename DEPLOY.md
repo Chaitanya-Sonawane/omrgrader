@@ -60,11 +60,18 @@ Or via the Netlify dashboard: **Add new site → Import from Git → pick `omrgr
 
 Render's default for new services is Python 3.14, whose fresh wheels can break
 imports (uvicorn then reports `Could not import module "app"`). The repo pins
-Python **3.11.9** so the tested wheels are used. Render honors these in this
-order of precedence: `PYTHON_VERSION` env var (set in `render.yaml`) → the
-`.python-version` file → `runtime.txt`. `runtime.txt` alone is no longer
-reliably honored, so keep `.python-version` (and, for dashboard-created
-services, set `PYTHON_VERSION=3.11.9`).
+Python **3.11** so the tested wheels are used. Render honors these in this
+order of precedence: `PYTHON_VERSION` env var (set to `3.11.9` in
+`render.yaml`) → the `.python-version` file → `runtime.txt`. `runtime.txt`
+alone is no longer reliably honored, so keep `.python-version` (and, for
+dashboard-created services, set `PYTHON_VERSION=3.11.9`).
+
+Note: the repo-root `.python-version` / `runtime.txt` use the **minor**
+version `3.11` (not the exact patch `3.11.9`). Netlify's build image reads
+these files too and fails with `python-build: definition not found:
+python-3.11.9` when an exact patch version it doesn't ship is pinned; `3.11`
+is always resolvable. Render still gets the exact `3.11.9` via its
+`PYTHON_VERSION` env var.
 
 ## Notes
 - Backend CORS is open (`allow_origins=["*"]`), so the Netlify origin can call Render.
