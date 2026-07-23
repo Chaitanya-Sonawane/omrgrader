@@ -223,8 +223,8 @@
     <h2>Results</h2>
     <div class="dash-stats" id="dashStats"></div>
     <div class="export-row">
-      <button class="ghost" onclick="window.open(API+'/api/export/excel','_blank')">Export Excel (.xlsx)</button>
-      <button class="ghost" onclick="window.open(API+'/api/export/pdf','_blank')">Export PDF</button>
+      <button class="ghost" onclick="openExport('excel')">Export Excel (.xlsx)</button>
+      <button class="ghost" onclick="openExport('pdf')">Export PDF</button>
       <button class="ghost" id="clearResults">Clear all results</button>
     </div>
     <table id="resultsTable">
@@ -236,9 +236,43 @@
 
 <script src="config.js"></script>
 <script>
-// API base: same-origin by default; set window.OMR_API_BASE in config.js
-// to the Render backend URL when the frontend is hosted separately (e.g. Netlify).
-const API = ((typeof window !== "undefined" && window.OMR_API_BASE) || "").replace(/\/$/, "");
+// ---- API base resolution ----
+// The backend normally serves this very page, so we prefer the SAME ORIGIN the
+// app was loaded from. This makes local dev (uvicorn on :8000) and same-origin
+// production work with zero config and no "Failed to fetch" surprises.
+// window.OMR_API_BASE (config.js) is only a fallback used when the same origin
+// has no backend (e.g. the UI is hosted on Netlify and the API lives on Render).
+const REMOTE_API_BASE = ((typeof window !== "undefined" && window.OMR_API_BASE) || "").replace(/\/$/, "");
+let _apiBase = null;
+async function getApiBase(){
+  if(_apiBase !== null) return _apiBase;
+  // 1. Prefer the origin that served this page, if it exposes the API.
+  try{
+    const r = await fetch("/api/health", {method:"GET", cache:"no-store"});
+    if(r.ok){ _apiBase = ""; return _apiBase; }
+  }catch(_){ /* same origin is a static host with no API - fall through */ }
+  // 2. Otherwise fall back to the explicitly configured remote backend.
+  _apiBase = REMOTE_API_BASE;
+  return _apiBase;
+}
+// Build a full API URL for a given path (resolving the base first).
+async function apiUrl(path){ return (await getApiBase()) + path; }
+
+// Turn low-level fetch/network failures into a clear, actionable message.
+// A bare `fetch` rejection (TypeError "Failed to fetch") means the request never
+// reached a server: backend down/asleep, wrong URL, CORS, or offline.
+function friendlyFetchError(err){
+  const msg = (err && err.message) || String(err);
+  const isNetwork = err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(msg);
+  if(isNetwork){
+    const where = REMOTE_API_BASE ? (" (tried " + REMOTE_API_BASE + ")") : "";
+    return "Cannot reach the scanning server" + where + ". " +
+      "Please check your internet connection and that the backend is running, then try again. " +
+      "If it was just deployed on a free host it may be waking up - retry in ~30s.";
+  }
+  return msg;
+}
+
 let selectedFile = null;
 let stream = null;
 
@@ -333,15 +367,15 @@ document.getElementById("saveKey").onclick = async ()=>{
   });
   const marks_per_correct = parseFloat(document.getElementById("marksPerCorrect").value)||1;
   const negative_marking = parseFloat(document.getElementById("negMarking").value)||0;
-  const res = await fetch(API+"/api/answer-key", {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({answers, marks_per_correct, negative_marking})
-  });
   try{
+    const res = await fetch(await apiUrl("/api/answer-key"), {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({answers, marks_per_correct, negative_marking})
+    });
     const data = await parseJSON(res);
     document.getElementById("keyStatus").textContent = `Saved ${data.questions} answers.`;
   }catch(err){
-    document.getElementById("keyStatus").textContent = "Error saving key: "+err.message;
+    document.getElementById("keyStatus").textContent = "Error saving key: "+friendlyFetchError(err);
   }
 };
 
@@ -433,7 +467,7 @@ document.getElementById("startCam").onclick = async ()=>{
     document.getElementById("snapCam").disabled = false;
     capturing = false;
     const fd = new FormData(); fd.append("session_id", sessionId);
-    fetch(API+"/api/frame-check/reset", {method:"POST", body: fd}).catch(()=>{});
+    apiUrl("/api/frame-check/reset").then(u=>fetch(u, {method:"POST", body: fd})).catch(()=>{});
     startLiveLoop();
   }catch(err){
     const name = err && err.name ? err.name+": " : "";
@@ -467,7 +501,7 @@ function startLiveLoop(){
       const fd = new FormData();
       fd.append("file", blob, "frame.jpg");
       fd.append("session_id", sessionId);
-      const res = await fetch(API+"/api/frame-check", {method:"POST", body: fd});
+      const res = await fetch(await apiUrl("/api/frame-check"), {method:"POST", body: fd});
       if(!res.ok) return;
       const q = await res.json();
       renderLive(q);
@@ -517,7 +551,7 @@ async function doAutoCapture(){
     fd.append("file", selectedFile);
     fd.append("student_id", document.getElementById("studentId").value);
     fd.append("student_name", document.getElementById("studentName").value);
-    const res = await fetch(API+"/api/auto-capture", {method:"POST", body: fd});
+    const res = await fetch(await apiUrl("/api/auto-capture"), {method:"POST", body: fd});
     const data = await parseJSON(res);
     if(!res.ok){
       statusEl.textContent = "Auto-capture scan failed: "+(data.detail||JSON.stringify(data));
@@ -528,7 +562,7 @@ async function doAutoCapture(){
     renderScanResult(data, statusEl);
     stopCamera();
   }catch(err){
-    statusEl.textContent = "Auto-capture failed: "+err.message;
+    statusEl.textContent = "Auto-capture failed: "+friendlyFetchError(err);
     capturing = false;
     startLiveLoop();
   }
@@ -581,28 +615,58 @@ function stopCamera(){
   document.getElementById("snapCam").disabled = true;
 }
 
+// ---- scan progress indicator ----
+// Walks the status line through the scanning pipeline while the request is
+// in-flight: Uploading -> Detecting Sheet -> Aligning -> Reading Answers ->
+// Generating Results (-> Completed on success, shown by renderScanResult).
+const SCAN_STEPS = ["Uploading", "Detecting Sheet", "Aligning", "Reading Answers", "Generating Results"];
+function startScanProgress(statusEl){
+  let i = 0;
+  statusEl.textContent = SCAN_STEPS[0] + "\u2026";
+  const t = setInterval(()=>{
+    i = Math.min(i + 1, SCAN_STEPS.length - 1);
+    statusEl.textContent = SCAN_STEPS[i] + "\u2026";
+  }, 600);
+  return ()=>clearInterval(t);
+}
+
 // ---- scan & score ----
 document.getElementById("scanBtn").onclick = async ()=>{
   if(!selectedFile){ alert("Choose or capture an image first."); return; }
   const statusEl = document.getElementById("scanStatus");
-  statusEl.textContent = "Scanning...";
+  const btn = document.getElementById("scanBtn");
+  btn.disabled = true;
+  const stopProgress = startScanProgress(statusEl);
   const fd = new FormData();
   fd.append("file", selectedFile);
   fd.append("student_id", document.getElementById("studentId").value);
   fd.append("student_name", document.getElementById("studentName").value);
   try{
-    const res = await fetch(API+"/api/scan-and-score", {method:"POST", body: fd});
+    const res = await fetch(await apiUrl("/api/scan-and-score"), {method:"POST", body: fd});
     const data = await parseJSON(res);
+    stopProgress();
     if(!res.ok){ statusEl.textContent = "Error: "+(data.detail||JSON.stringify(data)); return; }
     renderScanResult(data, statusEl);
   }catch(err){
-    statusEl.textContent = "Request failed: "+err.message;
+    stopProgress();
+    statusEl.textContent = "Request failed: "+friendlyFetchError(err);
+  }finally{
+    btn.disabled = false;
   }
 };
 
+// Open an export (Excel/PDF) via the resolved API base in a new tab.
+async function openExport(kind){
+  try{
+    window.open(await apiUrl("/api/export/"+kind), "_blank");
+  }catch(err){
+    alert(friendlyFetchError(err));
+  }
+}
+
 // ---- results tab ----
 async function loadResults(){
-  const res = await fetch(API+"/api/results");
+  const res = await fetch(await apiUrl("/api/results"));
   const data = await parseJSON(res);
   const dash = data.dashboard || {};
   const dashStats = document.getElementById("dashStats");
@@ -634,7 +698,7 @@ async function loadResults(){
 
 document.getElementById("clearResults").onclick = async ()=>{
   if(!confirm("Clear all scanned results?")) return;
-  await fetch(API+"/api/results", {method:"DELETE"});
+  await fetch(await apiUrl("/api/results"), {method:"DELETE"});
   loadResults();
 };
 </script>
