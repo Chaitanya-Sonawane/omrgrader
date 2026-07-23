@@ -14,4 +14,4 @@
 //
 //   window.OMR_API_BASE = "https://omrgrader-backend.onrender.com";
 //
-window.OMR_API_BASE = "https://omrgrader-backend.onrender.com";
+window.OMR_API_BASE = "https://rigorously-robeless-alva.ngrok-free.dev";

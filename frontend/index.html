@@ -244,19 +244,99 @@
 // has no backend (e.g. the UI is hosted on Netlify and the API lives on Render).
 const REMOTE_API_BASE = ((typeof window !== "undefined" && window.OMR_API_BASE) || "").replace(/\/$/, "");
 let _apiBase = null;
+const sleep = (ms)=> new Promise(r=> setTimeout(r, ms));
+
+// Some free tunnels/hosts (notably ngrok's free tier) intercept BROWSER
+// requests and return an HTML "you are about to visit..." warning page instead
+// of the real API response. Sending this header on every request skips that
+// interstitial so we always get JSON back. It is harmless for other backends.
+const API_HEADERS = {"ngrok-skip-browser-warning": "true"};
+// Merge API_HEADERS into a caller-supplied fetch options object (non-mutating).
+function withApiHeaders(opts){
+  opts = opts || {};
+  return Object.assign({}, opts, {headers: Object.assign({}, API_HEADERS, opts.headers || {})});
+}
+
+// Probe a base URL's /api/health once, with a hard timeout so a dead/asleep
+// host can't hang the UI indefinitely.
+async function probeHealth(base, timeoutMs){
+  const ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  const t = ctrl ? setTimeout(()=> ctrl.abort(), timeoutMs) : null;
+  try{
+    const r = await fetch(base + "/api/health", {
+      method:"GET", cache:"no-store", headers: API_HEADERS,
+      signal: ctrl ? ctrl.signal : undefined,
+    });
+    // A same-origin static host (or a tunnel interstitial) can answer 200 with
+    // an HTML page. Only treat it as a live API if it actually returns JSON.
+    if(r.ok){
+      const ct = (r.headers.get("content-type") || "").toLowerCase();
+      if(ct.includes("application/json")) return true;
+      try{ JSON.parse(await r.clone().text()); return true; }catch(_){ return false; }
+    }
+    return false;
+  }catch(_){
+    return false;
+  }finally{ if(t) clearTimeout(t); }
+}
+
 async function getApiBase(){
   if(_apiBase !== null) return _apiBase;
   // 1. Prefer the origin that served this page, if it exposes the API.
-  try{
-    const r = await fetch("/api/health", {method:"GET", cache:"no-store"});
-    if(r.ok){ _apiBase = ""; return _apiBase; }
-  }catch(_){ /* same origin is a static host with no API - fall through */ }
+  if(await probeHealth("", 4000)){ _apiBase = ""; return _apiBase; }
   // 2. Otherwise fall back to the explicitly configured remote backend.
   _apiBase = REMOTE_API_BASE;
   return _apiBase;
 }
+
+// Free hosts (e.g. Render free tier) sleep when idle and take ~30-60s to wake.
+// Rather than failing on the first request, wake the backend by polling its
+// health endpoint with backoff. Returns true once it responds, false on giving
+// up. `onProgress` (optional) receives a human-readable status line.
+async function ensureBackendAwake(onProgress){
+  const base = await getApiBase();
+  if(await probeHealth(base, 5000)) return true;
+  const deadline = Date.now() + 75000;   // wake budget ~75s
+  let attempt = 0;
+  while(Date.now() < deadline){
+    attempt++;
+    if(onProgress) onProgress("Waking the scanning server\u2026 (attempt " + attempt + ")");
+    await sleep(Math.min(5000, 1500 + attempt * 1000));
+    if(await probeHealth(base, 8000)) return true;
+  }
+  return false;
+}
+
 // Build a full API URL for a given path (resolving the base first).
 async function apiUrl(path){ return (await getApiBase()) + path; }
+
+// fetch() wrapper that transparently retries transient failures typical of a
+// waking/cold free host: bare network errors and 502/503/504 gateway errors.
+// Non-transient responses (400/404/200 ...) are returned as-is on the first try.
+async function fetchWithRetry(url, opts, onProgress, tries){
+  tries = tries || 3;
+  let lastErr = null;
+  for(let i = 0; i < tries; i++){
+    try{
+      const res = await fetch(url, withApiHeaders(opts));
+      if(res.status === 502 || res.status === 503 || res.status === 504){
+        if(i < tries - 1){
+          if(onProgress) onProgress("Server is starting up, retrying\u2026");
+          await sleep(3000 + i * 2000);
+          continue;
+        }
+      }
+      return res;
+    }catch(err){
+      lastErr = err;
+      if(i < tries - 1){
+        if(onProgress) onProgress("Connection failed, retrying\u2026 (" + (i + 2) + "/" + tries + ")");
+        await sleep(2500 + i * 2000);
+      }
+    }
+  }
+  throw lastErr;
+}
 
 // Turn low-level fetch/network failures into a clear, actionable message.
 // A bare `fetch` rejection (TypeError "Failed to fetch") means the request never
@@ -368,10 +448,10 @@ document.getElementById("saveKey").onclick = async ()=>{
   const marks_per_correct = parseFloat(document.getElementById("marksPerCorrect").value)||1;
   const negative_marking = parseFloat(document.getElementById("negMarking").value)||0;
   try{
-    const res = await fetch(await apiUrl("/api/answer-key"), {
+    const res = await fetch(await apiUrl("/api/answer-key"), withApiHeaders({
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({answers, marks_per_correct, negative_marking})
-    });
+    }));
     const data = await parseJSON(res);
     document.getElementById("keyStatus").textContent = `Saved ${data.questions} answers.`;
   }catch(err){
@@ -636,13 +716,24 @@ document.getElementById("scanBtn").onclick = async ()=>{
   const statusEl = document.getElementById("scanStatus");
   const btn = document.getElementById("scanBtn");
   btn.disabled = true;
-  const stopProgress = startScanProgress(statusEl);
+  let stopProgress = ()=>{};
   const fd = new FormData();
   fd.append("file", selectedFile);
   fd.append("student_id", document.getElementById("studentId").value);
   fd.append("student_name", document.getElementById("studentName").value);
   try{
-    const res = await fetch(await apiUrl("/api/scan-and-score"), {method:"POST", body: fd});
+    // Make sure a possibly-sleeping free-tier backend is awake before we upload,
+    // so the request doesn't fail on a cold start.
+    const awake = await ensureBackendAwake(msg=>{ statusEl.textContent = msg; });
+    if(!awake){
+      statusEl.textContent = friendlyFetchError(new TypeError("Failed to fetch"));
+      return;
+    }
+    stopProgress = startScanProgress(statusEl);
+    const res = await fetchWithRetry(
+      await apiUrl("/api/scan-and-score"), {method:"POST", body: fd},
+      msg=>{ statusEl.textContent = msg; },
+    );
     const data = await parseJSON(res);
     stopProgress();
     if(!res.ok){ statusEl.textContent = "Error: "+(data.detail||JSON.stringify(data)); return; }
@@ -666,7 +757,7 @@ async function openExport(kind){
 
 // ---- results tab ----
 async function loadResults(){
-  const res = await fetch(await apiUrl("/api/results"));
+  const res = await fetch(await apiUrl("/api/results"), withApiHeaders());
   const data = await parseJSON(res);
   const dash = data.dashboard || {};
   const dashStats = document.getElementById("dashStats");
@@ -698,7 +789,7 @@ async function loadResults(){
 
 document.getElementById("clearResults").onclick = async ()=>{
   if(!confirm("Clear all scanned results?")) return;
-  await fetch(await apiUrl("/api/results"), {method:"DELETE"});
+  await fetch(await apiUrl("/api/results"), withApiHeaders({method:"DELETE"}));
   loadResults();
 };
 </script>
