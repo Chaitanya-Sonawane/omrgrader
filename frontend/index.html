@@ -93,7 +93,7 @@
   .sub{ font-size:13.5px; color:var(--muted); margin:0 0 16px; }
 
   /* ---------- answer key grid ---------- */
-  .grid-key{ display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:10px; margin-bottom:18px; }
+  .grid-key{ display:grid; grid-template-columns:1fr 1fr; grid-template-rows:repeat(20,auto); grid-auto-flow:column; gap:8px 12px; margin-bottom:18px; }
   .key-cell{ border:1px solid var(--line); border-radius:12px; padding:10px; background:var(--slate-bg); }
   .key-cell label{ font-size:12px; font-weight:700; color:var(--brand); display:block; margin-bottom:7px; }
   .opt-row{ display:flex; gap:6px; }
@@ -225,6 +225,17 @@
   #qgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(56px,1fr)); gap:6px; margin-top:12px; font-size:11.5px; }
   #qgrid div{ padding:6px 2px; text-align:center; border-radius:8px; }
   .hint{ font-size:12.5px; color:var(--muted); margin-top:8px; display:block; }
+
+  /* ---------- on-screen full question table ---------- */
+  .qfull{ margin-top:8px; }
+  .qfull h4{ font-size:13.5px; margin:16px 0 6px; display:flex; align-items:center; gap:8px; font-weight:700; }
+  .qfull h4 .cdot{ width:11px; height:11px; border-radius:3px; display:inline-block; }
+  .qfull h4 small{ color:var(--muted); font-weight:600; }
+  table.qtbl{ min-width:420px; }
+  table.qtbl th, table.qtbl td{ text-align:center; padding:8px 10px; white-space:nowrap; }
+  table.qtbl tr.st-correct td{ background:var(--green-bg); }
+  table.qtbl tr.st-wrong td{ background:var(--red-bg); }
+  table.qtbl tr.st-blank td, table.qtbl tr.st-multiple td, table.qtbl tr.st-not_detected td{ background:var(--amber-bg); }
 </style>
 </head>
 <body>
@@ -553,6 +564,41 @@ function setKeyValue(q, a){
     b.classList.toggle("selected", parseInt(b.dataset.opt)===a));
 }
 
+// ---- persist the answer key locally so it survives page refresh ----
+const KEY_STORE = "omr_answer_key_v1";
+function collectKey(){
+  const answers = {};
+  keyGrid.querySelectorAll(".opt-row").forEach(row=>{
+    const sel = row.querySelector(".opt-btn.selected");
+    if(sel) answers[row.dataset.q] = parseInt(sel.dataset.opt);
+  });
+  const marks_per_correct = parseFloat(document.getElementById("marksPerCorrect").value)||1;
+  const negative_marking = parseFloat(document.getElementById("negMarking").value)||0;
+  return {answers, marks_per_correct, negative_marking};
+}
+function saveKeyLocal(payload){
+  try{ localStorage.setItem(KEY_STORE, JSON.stringify(payload)); }catch(e){}
+}
+function restoreKeyLocal(){
+  let payload;
+  try{ payload = JSON.parse(localStorage.getItem(KEY_STORE)||"null"); }catch(e){ payload = null; }
+  if(!payload || !payload.answers) return;
+  Object.keys(payload.answers).forEach(q=> setKeyValue(parseInt(q), parseInt(payload.answers[q])));
+  if(payload.marks_per_correct != null) document.getElementById("marksPerCorrect").value = payload.marks_per_correct;
+  if(payload.negative_marking != null) document.getElementById("negMarking").value = payload.negative_marking;
+  document.getElementById("keyStatus").textContent =
+    `Loaded saved key (${Object.keys(payload.answers).length} answers). Tap "Save answer key" to sync with the server.`;
+  // Re-sync the restored key with the backend so scanning uses it after refresh.
+  syncKeyToServer(payload).catch(()=>{});
+}
+async function syncKeyToServer(payload){
+  const res = await fetch(await apiUrl("/api/answer-key"), withApiHeaders({
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(payload)
+  }));
+  return parseJSON(res);
+}
+
 document.getElementById("applyBulk").onclick = ()=>{
   const text = document.getElementById("bulkKey").value;
   const tokens = text.split(/[\n,]/).map(t=>t.trim()).filter(Boolean);
@@ -573,17 +619,23 @@ document.getElementById("saveKey").onclick = async ()=>{
   });
   const marks_per_correct = parseFloat(document.getElementById("marksPerCorrect").value)||1;
   const negative_marking = parseFloat(document.getElementById("negMarking").value)||0;
+  const payload = {answers, marks_per_correct, negative_marking};
+  // Persist locally first so it survives a refresh even if the server call fails.
+  saveKeyLocal(payload);
   try{
     const res = await fetch(await apiUrl("/api/answer-key"), withApiHeaders({
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({answers, marks_per_correct, negative_marking})
+      body: JSON.stringify(payload)
     }));
     const data = await parseJSON(res);
-    document.getElementById("keyStatus").textContent = `Saved ${data.questions} answers.`;
+    document.getElementById("keyStatus").textContent = `Saved ${data.questions} answers (kept for next time).`;
   }catch(err){
-    document.getElementById("keyStatus").textContent = "Error saving key: "+friendlyFetchError(err);
+    document.getElementById("keyStatus").textContent = "Saved locally, but couldn't reach server: "+friendlyFetchError(err);
   }
 };
+
+// Restore any previously saved key on load.
+restoreKeyLocal();
 
 // ---- mode switch ----
 document.getElementById("modeUpload").onclick = ()=>{
@@ -839,6 +891,30 @@ function renderScanResult(data, statusEl){
   const badges = data.question_results.map(qr=>
     `<div class="badge ${qr.status}">Q${qr.question}:${qr.student_answer ?? "-"}</div>`).join("");
 
+  // Full 40-question right/wrong table, grouped by subject, shown on screen.
+  const optTxt = v => (v === null || v === undefined) ? "-" : v;
+  const statusTxt = s => String(s || "").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
+  const detailTables = groups.map(g=>{
+    const qs = data.question_results
+      .filter(q=> q.question >= g.from && q.question <= g.to)
+      .sort((a,b)=> a.question - b.question);
+    const qrows = qs.map(q=>`
+      <tr class="st-${q.status}">
+        <td>${q.question}</td>
+        <td>${optTxt(q.correct_answer)}</td>
+        <td>${optTxt(q.student_answer)}</td>
+        <td>${statusTxt(q.status)}</td>
+        <td>${q.marks}</td>
+      </tr>`).join("");
+    return `<h4><span class="cdot" style="background:${g.color}"></span>${g.name} <small>(Q${g.from}\u2013${g.to}) &middot; ${g.correct}/${g.total}</small></h4>
+      <div class="table-wrap">
+        <table class="qtbl">
+          <thead><tr><th>Q#</th><th>Correct</th><th>Marked</th><th>Status</th><th>Marks</th></tr></thead>
+          <tbody>${qrows}</tbody>
+        </table>
+      </div>`;
+  }).join("");
+
   out.innerHTML = `
     <div class="score-hero">
       <div class="big">${data.total_marks}<small>/${data.max_marks}</small></div>
@@ -851,9 +927,14 @@ function renderScanResult(data, statusEl){
     </div>
     <div class="subjects">${subjectCards}</div>
     <div class="card">
+      <h2 style="font-size:16px; margin:0 0 4px;">Question-by-question result</h2>
+      <p class="sub" style="margin-bottom:6px;">All 40 questions with correct answer, marked answer and status.</p>
+      <div class="qfull">${detailTables}</div>
+    </div>
+    <div class="card">
       <button class="primary" onclick="downloadResultPDF()">⬇️ Download result PDF</button>
       <details class="qdetail">
-        <summary>Question-by-question detail</summary>
+        <summary>Compact answer badges</summary>
         <div id="qgrid">${badges}</div>
       </details>
       <span class="hint">Quality: sharpness ${data.quality.blur_score}, brightness ${data.quality.brightness}, bubbles ${data.quality.bubbles_detected}/160.
