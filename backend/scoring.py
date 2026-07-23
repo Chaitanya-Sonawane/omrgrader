@@ -36,8 +36,15 @@ def score_sheet(scan_answers: dict, answer_key: dict,
     """
     scan_answers: dict[int question] -> BubbleResult (from omr_engine)
     answer_key:   dict[int question] -> int correct_option (1-4)
+
+    The sheet is scored over the full set of questions present (the union of
+    the answer key and the questions detected on the scanned sheet). This keeps
+    the maximum marks tied to the real number of questions on the sheet (e.g.
+    40) even if a correct answer for one question was never set in the key,
+    instead of silently shrinking the total to the number of saved key entries.
     """
-    total_q = len(answer_key)
+    all_questions = set(answer_key.keys()) | set(scan_answers.keys())
+    total_q = max(all_questions) if all_questions else 0
     result = StudentResult(
         student_id=student_id,
         student_name=student_name,
@@ -45,11 +52,17 @@ def score_sheet(scan_answers: dict, answer_key: dict,
         max_marks=total_q * marks_per_correct,
     )
 
-    for q in sorted(answer_key.keys()):
+    for q in range(1, total_q + 1):
         correct_opt = answer_key.get(q)
         bubble = scan_answers.get(q)
 
-        if bubble is None or (bubble.flagged and bubble.flag_reason == "not detected"):
+        if correct_opt is None:
+            # No correct answer configured for this question: it still counts
+            # toward the total (so the sheet stays out of its full size), but
+            # it cannot be graded, so it is treated as blank (0 marks).
+            status, marks = "blank", 0.0
+            result.blank += 1
+        elif bubble is None or (bubble.flagged and bubble.flag_reason == "not detected"):
             status, marks = "not_detected", 0.0
             result.not_detected += 1
         elif bubble.is_multiple:
