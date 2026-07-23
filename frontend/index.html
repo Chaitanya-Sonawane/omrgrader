@@ -2,237 +2,361 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover" />
+<meta name="theme-color" content="#4f46e5" />
 <title>OMR Grader</title>
 <style>
   :root{
-    --paper:#F7F4EC;
-    --ink:#1E2A38;
-    --ink-blue:#28466B;
-    --rule:#C9BFA8;
-    --pen-red:#B23A2F;
-    --pen-green:#2F7A4F;
-    --amber:#C08A2E;
-    --card:#FFFFFF;
-    --mono: "JetBrains Mono","SFMono-Regular",Consolas,monospace;
-    --serif: "Georgia","Iowan Old Style",serif;
+    --bg:#eef1f8;
+    --bg-grad-1:#4f46e5;
+    --bg-grad-2:#7c3aed;
+    --ink:#1e293b;
+    --muted:#64748b;
+    --line:#e2e8f0;
+    --brand:#4f46e5;
+    --brand-dark:#4338ca;
+    --card:#ffffff;
+    --green:#16a34a;
+    --green-bg:#dcfce7;
+    --red:#dc2626;
+    --red-bg:#fee2e2;
+    --amber:#d97706;
+    --amber-bg:#fef3c7;
+    --slate-bg:#f1f5f9;
+    --radius:16px;
+    --shadow:0 4px 20px rgba(30,41,59,.08);
+    --shadow-lg:0 10px 40px rgba(79,70,229,.18);
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --safe-b:env(safe-area-inset-bottom, 0px);
   }
-  *{box-sizing:border-box;}
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html{ -webkit-text-size-adjust:100%; }
   body{
-    margin:0; background:var(--paper); color:var(--ink);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background-image:
-      linear-gradient(var(--rule) 1px, transparent 1px);
-    background-size: 100% 34px;
-    background-attachment:local;
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--sans); font-size:16px; line-height:1.5;
+    padding-bottom:calc(84px + var(--safe-b));
   }
+  @media(min-width:860px){ body{ padding-bottom:0; } }
+
+  /* ---------- header ---------- */
   header{
-    padding:28px 32px 18px; border-bottom:2px solid var(--ink);
-    background:var(--paper);
-    display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:10px;
+    background:linear-gradient(135deg,var(--bg-grad-1),var(--bg-grad-2));
+    color:#fff; padding:18px 20px calc(18px);
+    padding-top:calc(18px + env(safe-area-inset-top,0px));
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    box-shadow:var(--shadow-lg); position:sticky; top:0; z-index:40;
   }
-  header h1{
-    font-family:var(--serif); font-size:28px; margin:0; letter-spacing:.3px;
-  }
-  header h1 span{ color:var(--pen-red); }
-  header .tag{ font-family:var(--mono); font-size:12px; color:var(--ink-blue); text-transform:uppercase; letter-spacing:1.5px;}
-  main{ max-width:1080px; margin:0 auto; padding:24px 20px 80px; }
-  .tabs{ display:flex; gap:6px; margin-bottom:22px; }
+  header h1{ font-size:20px; font-weight:800; margin:0; letter-spacing:-.4px; display:flex; align-items:center; gap:8px; }
+  header h1 .logo{ font-size:22px; }
+  header h1 span{ opacity:.85; font-weight:600; }
+  header .tag{ font-size:11px; opacity:.85; text-transform:uppercase; letter-spacing:1.2px; font-weight:600; }
+
+  main{ max-width:820px; margin:0 auto; padding:18px 16px 24px; }
+
+  /* ---------- top step chips (desktop) ---------- */
+  .tabs{ display:flex; gap:8px; margin-bottom:18px; }
   .tab-btn{
-    font-family:var(--mono); font-size:13px; letter-spacing:.5px; text-transform:uppercase;
-    padding:9px 16px; border:1.5px solid var(--ink); background:transparent; color:var(--ink);
-    cursor:pointer; border-radius:3px 3px 0 0; border-bottom:none;
+    flex:1; font-size:13px; font-weight:600; padding:10px 8px; border:none;
+    background:#fff; color:var(--muted); cursor:pointer; border-radius:12px;
+    box-shadow:var(--shadow); transition:transform .15s, color .15s, background .15s;
+    display:flex; align-items:center; justify-content:center; gap:6px;
   }
-  .tab-btn.active{ background:var(--ink); color:var(--paper); }
-  .panel{ display:none; background:var(--card); border:1.5px solid var(--ink); border-radius:2px;
-          padding:26px; box-shadow: 4px 4px 0 rgba(30,42,56,0.08); }
+  .tab-btn .ico{ font-size:16px; }
+  .tab-btn.active{ background:linear-gradient(135deg,var(--bg-grad-1),var(--bg-grad-2)); color:#fff; }
+  .tab-btn:active{ transform:scale(.97); }
+
+  /* ---------- bottom nav (mobile) ---------- */
+  .bottom-nav{
+    position:fixed; bottom:0; left:0; right:0; z-index:50;
+    background:rgba(255,255,255,.96); backdrop-filter:saturate(180%) blur(12px);
+    border-top:1px solid var(--line);
+    display:flex; padding:6px 6px calc(6px + var(--safe-b));
+  }
+  .bottom-nav button{
+    flex:1; background:none; border:none; cursor:pointer; padding:8px 4px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    font-size:11px; font-weight:600; color:var(--muted); border-radius:12px;
+    transition:color .15s, background .15s;
+  }
+  .bottom-nav button .ico{ font-size:20px; line-height:1; }
+  .bottom-nav button.active{ color:var(--brand); background:var(--slate-bg); }
+  @media(min-width:860px){ .bottom-nav{ display:none; } }
+  @media(max-width:859px){ .tabs{ display:none; } }
+
+  /* ---------- panels / cards ---------- */
+  .panel{ display:none; animation:fadeUp .35s ease both; }
   .panel.active{ display:block; }
-  h2{ font-family:var(--serif); font-size:20px; margin:0 0 4px; }
-  .sub{ font-size:13px; color:#666; margin:0 0 18px; }
-  .grid-key{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-bottom:18px; }
-  .key-cell{ border:1px solid var(--rule); border-radius:4px; padding:8px 10px; }
-  .key-cell label{ font-family:var(--mono); font-size:11px; color:var(--ink-blue); display:block; margin-bottom:6px; }
+  @keyframes fadeUp{ from{ opacity:0; transform:translateY(12px);} to{ opacity:1; transform:none;} }
+
+  .card{ background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); margin-bottom:16px; }
+  h2{ font-size:19px; font-weight:800; margin:0 0 4px; letter-spacing:-.3px; }
+  .sub{ font-size:13.5px; color:var(--muted); margin:0 0 16px; }
+
+  /* ---------- answer key grid ---------- */
+  .grid-key{ display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:10px; margin-bottom:18px; }
+  .key-cell{ border:1px solid var(--line); border-radius:12px; padding:10px; background:var(--slate-bg); }
+  .key-cell label{ font-size:12px; font-weight:700; color:var(--brand); display:block; margin-bottom:7px; }
   .opt-row{ display:flex; gap:6px; }
   .opt-btn{
-    flex:1; font-family:var(--mono); font-size:13px; padding:7px 0; cursor:pointer;
-    border:1px solid var(--rule); border-radius:50%; background:#fff; color:var(--ink-blue);
-    aspect-ratio:1/1; line-height:1; transition:background .12s,color .12s,border-color .12s;
+    flex:1; font-size:14px; font-weight:600; cursor:pointer; min-height:40px;
+    border:1.5px solid var(--line); border-radius:10px; background:#fff; color:var(--muted);
+    transition:transform .1s, background .15s, color .15s, border-color .15s;
   }
-  .opt-btn:hover{ border-color:var(--ink-blue); }
-  .opt-btn.selected{ background:var(--ink-blue); color:#fff; border-color:var(--ink-blue); }
-  .row{ display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px; }
-  .field label{ font-size:12px; display:block; margin-bottom:4px; color:#555; }
+  .opt-btn:active{ transform:scale(.9); }
+  .opt-btn.selected{ background:var(--brand); color:#fff; border-color:var(--brand); box-shadow:0 4px 12px rgba(79,70,229,.3); }
+
+  .row{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
+  .field{ flex:1; min-width:150px; }
+  .field label{ font-size:12.5px; font-weight:600; display:block; margin-bottom:6px; color:var(--muted); }
   .field input, .field textarea{
-    font-family:var(--mono); padding:7px 9px; border:1px solid var(--rule); border-radius:3px; width:220px;
+    font-family:var(--sans); font-size:16px; padding:12px 14px; border:1.5px solid var(--line);
+    border-radius:12px; width:100%; background:#fff; transition:border-color .15s, box-shadow .15s;
   }
-  textarea#bulkKey{ width:100%; height:70px; }
+  .field input:focus, .field textarea:focus{ outline:none; border-color:var(--brand); box-shadow:0 0 0 3px rgba(79,70,229,.15); }
+  textarea#bulkKey{ width:100%; height:84px; resize:vertical; }
+
+  /* ---------- buttons ---------- */
   button.primary{
-    font-family:var(--mono); text-transform:uppercase; letter-spacing:.6px; font-size:12.5px;
-    background:var(--ink-blue); color:#fff; border:none; padding:10px 18px; border-radius:3px; cursor:pointer;
+    font-family:var(--sans); font-size:15.5px; font-weight:700; width:100%;
+    background:linear-gradient(135deg,var(--bg-grad-1),var(--bg-grad-2)); color:#fff; border:none;
+    padding:15px 18px; border-radius:14px; cursor:pointer; box-shadow:var(--shadow-lg);
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    transition:transform .12s, filter .15s;
   }
-  button.primary:hover{ background:var(--ink); }
+  button.primary:active{ transform:scale(.98); }
+  button.primary:disabled{ filter:grayscale(.4) opacity(.7); cursor:default; }
   button.ghost{
-    font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:.5px;
-    background:transparent; border:1.5px solid var(--ink); padding:8px 14px; border-radius:3px; cursor:pointer;
+    font-family:var(--sans); font-size:13.5px; font-weight:600;
+    background:#fff; border:1.5px solid var(--line); color:var(--ink);
+    padding:11px 16px; border-radius:12px; cursor:pointer; transition:transform .1s, border-color .15s;
   }
-  .capture-modes{ display:flex; gap:10px; margin-bottom:18px; }
+  button.ghost:active{ transform:scale(.97); }
+  button.ghost:hover{ border-color:var(--brand); color:var(--brand); }
+
+  /* ---------- capture modes ---------- */
+  .capture-modes{ display:flex; gap:10px; margin-bottom:16px; }
   .mode-card{
-    flex:1; border:1.5px dashed var(--rule); border-radius:6px; padding:18px; text-align:center; cursor:pointer;
+    flex:1; border:2px solid var(--line); border-radius:14px; padding:16px 10px; text-align:center; cursor:pointer;
+    background:#fff; transition:transform .12s, border-color .15s, background .15s;
   }
-  .mode-card.selected{ border-color:var(--ink-blue); background:#F0F3F8; }
-  .mode-card h3{ margin:6px 0 4px; font-size:15px; }
-  .mode-card p{ margin:0; font-size:12px; color:#666; }
-  #videoWrap{ position:relative; max-width:480px; display:none; }
-  #video{ width:100%; border-radius:6px; border:1.5px solid var(--ink); display:block; }
+  .mode-card:active{ transform:scale(.97); }
+  .mode-card.selected{ border-color:var(--brand); background:#f5f3ff; }
+  .mode-card h3{ margin:6px 0 4px; font-size:14.5px; font-weight:700; }
+  .mode-card p{ margin:0; font-size:12px; color:var(--muted); }
+
+  #videoWrap{ position:relative; width:100%; display:none; border-radius:14px; overflow:hidden; }
+  #video{ width:100%; display:block; }
   #liveOverlay{
-    position:absolute; left:0; right:0; bottom:0; padding:10px 12px;
-    background:rgba(30,42,56,0.78); color:#fff; border-radius:0 0 6px 6px;
-    font-family:var(--mono); font-size:13px;
+    position:absolute; left:0; right:0; bottom:0; padding:12px 14px;
+    background:linear-gradient(transparent, rgba(15,23,42,.85)); color:#fff; font-size:13px;
   }
-  #liveMsg{ font-weight:700; letter-spacing:.4px; }
-  #liveMsg.ready{ color:#7BE495; }
+  #liveMsg{ font-weight:700; letter-spacing:.2px; }
+  #liveMsg.ready{ color:#4ade80; }
   #liveMeta{ font-size:11px; opacity:.85; margin-top:3px; }
-  #confBar{ height:5px; background:rgba(255,255,255,.25); border-radius:3px; margin-top:6px; overflow:hidden; }
+  #confBar{ height:6px; background:rgba(255,255,255,.25); border-radius:4px; margin-top:8px; overflow:hidden; }
   #confFill{ height:100%; width:0%; background:var(--amber); transition:width .15s; }
-  #confFill.ready{ background:#7BE495; }
+  #confFill.ready{ background:#4ade80; }
   #canvas{ display:none; }
-  #preview{ max-width:320px; border:1.5px solid var(--ink); border-radius:6px; margin-top:10px; display:none; }
+  #preview{ width:100%; max-width:360px; border:1px solid var(--line); border-radius:14px; margin-top:12px; display:none; box-shadow:var(--shadow); }
   #dropzone{
-    border:2px dashed var(--rule); border-radius:8px; padding:30px; text-align:center; cursor:pointer;
+    border:2.5px dashed var(--line); border-radius:16px; padding:36px 18px; text-align:center; cursor:pointer;
+    color:var(--muted); font-size:14.5px; font-weight:500; background:var(--slate-bg); transition:border-color .15s, background .15s;
   }
-  #dropzone.drag{ border-color:var(--ink-blue); background:#F0F3F8; }
-  .student-meta{ display:flex; gap:12px; margin:14px 0; flex-wrap:wrap; }
-  #scanStatus{ font-family:var(--mono); font-size:13px; margin-top:12px; white-space:pre-wrap; }
-  .badge{ display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-family:var(--mono); }
-  .badge.correct{ background:#E3F3E8; color:var(--pen-green); }
-  .badge.wrong{ background:#FBE7E4; color:var(--pen-red); }
-  .badge.blank, .badge.multiple{ background:#FBF0DC; color:var(--amber); }
-  .badge.not_detected{ background:#EAEAEA; color:#555; }
-  table{ width:100%; border-collapse:collapse; margin-top:14px; font-size:13px; }
-  th,td{ padding:7px 9px; border-bottom:1px solid var(--rule); text-align:left; }
-  th{ font-family:var(--mono); font-size:11px; text-transform:uppercase; color:var(--ink-blue); }
-  .dash-stats{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
-  .stat{ background:#F0F3F8; border-radius:6px; padding:12px 16px; min-width:120px; }
-  .stat .n{ font-family:var(--mono); font-size:22px; font-weight:700; color:var(--ink-blue); }
-  .stat .l{ font-size:11px; color:#666; text-transform:uppercase; letter-spacing:.4px; }
-  .export-row{ display:flex; gap:10px; margin:16px 0; }
-  #qgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(58px,1fr)); gap:5px; margin-top:12px; font-family:var(--mono); font-size:12px; }
-  #qgrid div{ padding:5px; text-align:center; border-radius:3px; border:1px solid var(--rule); }
-  .hint{ font-size:12px; color:#888; margin-top:6px; }
+  #dropzone .dz-ico{ font-size:34px; display:block; margin-bottom:8px; }
+  #dropzone.drag{ border-color:var(--brand); background:#f5f3ff; }
+  .student-meta{ display:flex; gap:12px; margin:16px 0; flex-wrap:wrap; }
+
+  /* ---------- scan status / loading ---------- */
+  #scanStatus{ font-size:14px; margin-top:14px; }
+  .status-line{ display:flex; align-items:center; gap:10px; padding:14px 16px; border-radius:14px; background:var(--slate-bg); font-weight:600; }
+  .status-line.err{ background:var(--red-bg); color:var(--red); }
+  .status-line.ok{ background:var(--green-bg); color:var(--green); }
+  .spinner{
+    width:18px; height:18px; border:2.5px solid rgba(79,70,229,.25); border-top-color:var(--brand);
+    border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* ---------- subject result cards ---------- */
+  .score-hero{
+    text-align:center; color:#fff; border-radius:18px; padding:22px 18px; margin:16px 0;
+    background:linear-gradient(135deg,var(--bg-grad-1),var(--bg-grad-2)); box-shadow:var(--shadow-lg);
+    animation:pop .4s ease both;
+  }
+  @keyframes pop{ from{ opacity:0; transform:scale(.94);} to{ opacity:1; transform:none;} }
+  .score-hero .big{ font-size:44px; font-weight:800; line-height:1; }
+  .score-hero .big small{ font-size:22px; opacity:.8; font-weight:600; }
+  .score-hero .meta{ margin-top:8px; font-size:13.5px; opacity:.9; display:flex; gap:14px; justify-content:center; flex-wrap:wrap; }
+  .score-hero .grade-pill{ display:inline-block; background:rgba(255,255,255,.22); padding:4px 12px; border-radius:999px; font-weight:700; }
+
+  .subjects{ display:grid; grid-template-columns:1fr; gap:12px; margin:16px 0; }
+  @media(min-width:560px){ .subjects{ grid-template-columns:1fr 1fr; } }
+  .subject{ background:#fff; border:1px solid var(--line); border-radius:16px; padding:16px; box-shadow:var(--shadow); animation:fadeUp .35s ease both; }
+  .subject .top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .subject .name{ font-weight:700; font-size:15px; display:flex; align-items:center; gap:8px; }
+  .subject .name .dot{ width:12px; height:12px; border-radius:4px; }
+  .subject .frac{ font-size:20px; font-weight:800; }
+  .subject .frac small{ font-size:13px; color:var(--muted); font-weight:600; }
+  .bar{ height:9px; background:var(--slate-bg); border-radius:6px; overflow:hidden; }
+  .bar > i{ display:block; height:100%; border-radius:6px; transition:width .6s ease; }
+  .subject .brk{ margin-top:9px; font-size:11.5px; color:var(--muted); display:flex; gap:10px; flex-wrap:wrap; }
+
+  details.qdetail{ margin-top:12px; }
+  details.qdetail summary{ cursor:pointer; font-weight:600; font-size:13.5px; color:var(--brand); padding:6px 0; }
+  .badge{ display:inline-block; padding:4px 9px; border-radius:8px; font-size:11.5px; font-weight:600; }
+  .badge.correct{ background:var(--green-bg); color:var(--green); }
+  .badge.wrong{ background:var(--red-bg); color:var(--red); }
+  .badge.blank, .badge.multiple{ background:var(--amber-bg); color:var(--amber); }
+  .badge.not_detected{ background:#e2e8f0; color:var(--muted); }
+
+  /* ---------- results table ---------- */
+  .table-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:14px; border:1px solid var(--line); }
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; background:#fff; min-width:520px; }
+  th,td{ padding:11px 12px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  th{ font-size:11.5px; text-transform:uppercase; color:var(--muted); font-weight:700; background:var(--slate-bg); }
+  tr:last-child td{ border-bottom:none; }
+  .dash-stats{ display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:18px; }
+  @media(min-width:560px){ .dash-stats{ grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); } }
+  .stat{ background:#fff; border-radius:14px; padding:14px 16px; box-shadow:var(--shadow); }
+  .stat .n{ font-size:24px; font-weight:800; color:var(--brand); }
+  .stat .l{ font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; font-weight:600; margin-top:2px; }
+  .export-row{ display:flex; gap:10px; margin:16px 0; flex-wrap:wrap; }
+  .export-row button{ flex:1; min-width:130px; }
+  #qgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(56px,1fr)); gap:6px; margin-top:12px; font-size:11.5px; }
+  #qgrid div{ padding:6px 2px; text-align:center; border-radius:8px; }
+  .hint{ font-size:12.5px; color:var(--muted); margin-top:8px; display:block; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>OMR <span>Grader</span></h1>
-  <div class="tag">Scan &middot; Compare &middot; Result</div>
+  <h1><span class="logo">📝</span> OMR <span>Grader</span></h1>
+  <div class="tag">Scan · Score · Report</div>
 </header>
 
 <main>
   <div class="tabs">
-    <button class="tab-btn active" data-tab="key">1. Answer Key</button>
-    <button class="tab-btn" data-tab="scan">2. Scan Sheet</button>
-    <button class="tab-btn" data-tab="results">3. Results</button>
+    <button class="tab-btn active" data-tab="key"><span class="ico">🔑</span> Answer Key</button>
+    <button class="tab-btn" data-tab="scan"><span class="ico">📷</span> Scan Sheet</button>
+    <button class="tab-btn" data-tab="results"><span class="ico">📊</span> Results</button>
   </div>
 
   <!-- ANSWER KEY -->
   <section class="panel active" id="panel-key">
-    <h2>Answer key</h2>
-    <p class="sub">40 questions, options 1&ndash;4 &mdash; matching your NMMS answer sheet. Click the correct option for each (click again to clear), or paste in bulk.</p>
+    <div class="card">
+      <h2>Answer key</h2>
+      <p class="sub">40 questions, options 1&ndash;4. Tap the correct option for each (tap again to clear), or paste in bulk.</p>
 
-    <div class="row">
-      <div class="field">
-        <label>Marks per correct answer</label>
-        <input type="number" id="marksPerCorrect" value="1" step="0.5" />
+      <div class="row">
+        <div class="field">
+          <label>Marks per correct answer</label>
+          <input type="number" inputmode="decimal" id="marksPerCorrect" value="1" step="0.5" />
+        </div>
+        <div class="field">
+          <label>Negative marking (per wrong)</label>
+          <input type="number" inputmode="decimal" id="negMarking" value="0" step="0.25" />
+        </div>
       </div>
-      <div class="field">
-        <label>Negative marking (per wrong)</label>
-        <input type="number" id="negMarking" value="0" step="0.25" />
-      </div>
-    </div>
 
-    <div class="field" style="max-width:640px; margin-bottom:16px;">
-      <label>Bulk paste (format: "1 2, 2 4, 3 1 ..." or one "Q Answer" per line)</label>
-      <textarea id="bulkKey" placeholder="1 2
+      <div class="field" style="margin-bottom:16px;">
+        <label>Bulk paste (format: "1 2, 2 4, 3 1 ..." or one "Q Answer" per line)</label>
+        <textarea id="bulkKey" placeholder="1 2
 2 4
 3 1
 ..."></textarea>
-      <button class="ghost" id="applyBulk" style="margin-top:6px;">Apply bulk entry</button>
-    </div>
+        <button class="ghost" id="applyBulk" style="margin-top:8px;">Apply bulk entry</button>
+      </div>
 
-    <div class="grid-key" id="keyGrid"></div>
-    <button class="primary" id="saveKey">Save answer key</button>
-    <span class="hint" id="keyStatus"></span>
+      <div class="grid-key" id="keyGrid"></div>
+      <button class="primary" id="saveKey">💾 Save answer key</button>
+      <span class="hint" id="keyStatus"></span>
+    </div>
   </section>
 
   <!-- SCAN -->
   <section class="panel" id="panel-scan">
-    <h2>Scan an answer sheet</h2>
-    <p class="sub">Capture with your camera or upload a photo. Works with tilted, slightly shadowed phone photos.</p>
+    <div class="card">
+      <h2>Scan an answer sheet</h2>
+      <p class="sub">Capture with your camera or upload a photo. Works with tilted, slightly shadowed phone photos.</p>
 
-    <div class="capture-modes">
-      <div class="mode-card selected" id="modeUpload">
-        <h3>&#128193; Upload Image</h3>
-        <p>JPG / PNG, drag & drop</p>
-      </div>
-      <div class="mode-card" id="modeCamera">
-        <h3>&#128247; Camera Capture</h3>
-        <p>Use your device camera</p>
-      </div>
-    </div>
-
-    <div id="uploadArea">
-      <div id="dropzone">Drop image here or click to choose a file
-        <input type="file" id="fileInput" accept="image/*" style="display:none" />
-      </div>
-    </div>
-
-    <div id="cameraArea" style="display:none;">
-      <div id="videoWrap">
-        <video id="video" autoplay playsinline muted></video>
-        <div id="liveOverlay">
-          <div id="liveMsg">Starting&hellip;</div>
-          <div id="liveMeta"></div>
-          <div id="confBar"><div id="confFill"></div></div>
+      <div class="capture-modes">
+        <div class="mode-card selected" id="modeUpload">
+          <h3>📁 Upload</h3>
+          <p>JPG / PNG</p>
+        </div>
+        <div class="mode-card" id="modeCamera">
+          <h3>📷 Camera</h3>
+          <p>Use device camera</p>
         </div>
       </div>
-      <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <button class="ghost" id="startCam">Start camera</button>
-        <button class="primary" id="snapCam" disabled>Capture photo</button>
-        <label style="font-size:12px; font-family:var(--mono);">
-          <input type="checkbox" id="autoCapture" checked /> Auto capture when steady
-        </label>
+
+      <div id="uploadArea">
+        <div id="dropzone"><span class="dz-ico">🖼️</span>Tap to choose a photo, or drop it here
+          <input type="file" id="fileInput" accept="image/*" style="display:none" />
+        </div>
       </div>
-      <canvas id="canvas"></canvas>
+
+      <div id="cameraArea" style="display:none;">
+        <div id="videoWrap">
+          <video id="video" autoplay playsinline muted></video>
+          <div id="liveOverlay">
+            <div id="liveMsg">Starting&hellip;</div>
+            <div id="liveMeta"></div>
+            <div id="confBar"><div id="confFill"></div></div>
+          </div>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button class="ghost" id="startCam">Start camera</button>
+          <button class="ghost" id="snapCam" disabled>Capture photo</button>
+          <label style="font-size:13px; display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" id="autoCapture" checked /> Auto capture when steady
+          </label>
+        </div>
+        <canvas id="canvas"></canvas>
+      </div>
+
+      <img id="preview" />
+
+      <div class="student-meta">
+        <div class="field"><label>Student ID / Roll No.</label><input id="studentId" inputmode="numeric" placeholder="e.g. 8138" /></div>
+        <div class="field"><label>Student name (optional)</label><input id="studentName" placeholder="e.g. Bhosale Sudarshan" /></div>
+      </div>
+
+      <button class="primary" id="scanBtn">✨ Scan &amp; score this sheet</button>
+      <div id="scanStatus"></div>
     </div>
 
-    <img id="preview" />
-
-    <div class="student-meta">
-      <div class="field"><label>Student ID / Roll No.</label><input id="studentId" placeholder="e.g. 8138" /></div>
-      <div class="field"><label>Student name (optional)</label><input id="studentName" placeholder="e.g. Bhosale Sudarshan" /></div>
-    </div>
-
-    <button class="primary" id="scanBtn">Scan & score this sheet</button>
-    <div id="scanStatus"></div>
-    <div id="qgrid"></div>
+    <!-- grouped subject result for the just-scanned sheet -->
+    <div id="scanResult"></div>
   </section>
 
   <!-- RESULTS -->
   <section class="panel" id="panel-results">
-    <h2>Results</h2>
-    <div class="dash-stats" id="dashStats"></div>
-    <div class="export-row">
-      <button class="ghost" onclick="openExport('excel')">Export Excel (.xlsx)</button>
-      <button class="ghost" onclick="openExport('pdf')">Export PDF</button>
-      <button class="ghost" id="clearResults">Clear all results</button>
+    <div class="card">
+      <h2>Class results</h2>
+      <p class="sub">Every sheet scored this session.</p>
+      <div class="dash-stats" id="dashStats"></div>
+      <div class="export-row">
+        <button class="ghost" onclick="openExport('excel')">⬇️ Excel (.xlsx)</button>
+        <button class="ghost" onclick="openExport('pdf')">⬇️ Class PDF</button>
+        <button class="ghost" id="clearResults">🗑️ Clear all</button>
+      </div>
+      <div class="table-wrap">
+        <table id="resultsTable">
+          <thead><tr><th>ID</th><th>Name</th><th>Correct</th><th>Wrong</th><th>Blank</th><th>Marks</th><th>%</th><th>Grade</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
-    <table id="resultsTable">
-      <thead><tr><th>ID</th><th>Name</th><th>Correct</th><th>Wrong</th><th>Blank</th><th>Marks</th><th>%</th><th>Grade</th></tr></thead>
-      <tbody></tbody>
-    </table>
   </section>
 </main>
+
+<!-- mobile bottom navigation -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-tab="key"><span class="ico">🔑</span>Key</button>
+  <button class="nav-btn" data-tab="scan"><span class="ico">📷</span>Scan</button>
+  <button class="nav-btn" data-tab="results"><span class="ico">📊</span>Results</button>
+</nav>
 
 <script src="config.js"></script>
 <script>
@@ -384,15 +508,17 @@ async function parseJSON(res){
   }
 }
 
-// ---- tabs ----
-document.querySelectorAll(".tab-btn").forEach(btn=>{
-  btn.onclick = ()=>{
-    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
-    document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById("panel-"+btn.dataset.tab).classList.add("active");
-    if(btn.dataset.tab === "results") loadResults();
-  };
+// ---- tabs (desktop chips + mobile bottom nav stay in sync) ----
+function switchTab(tab){
+  document.querySelectorAll(".tab-btn, .nav-btn").forEach(b=>
+    b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+  document.getElementById("panel-"+tab).classList.add("active");
+  window.scrollTo({top:0, behavior:"smooth"});
+  if(tab === "results") loadResults();
+}
+document.querySelectorAll(".tab-btn, .nav-btn").forEach(btn=>{
+  btn.onclick = ()=> switchTab(btn.dataset.tab);
 });
 
 // ---- answer key grid ----
@@ -648,35 +774,193 @@ async function doAutoCapture(){
   }
 }
 
+// ---- subject grouping (frontend-only presentation) ----
+// Questions are split into four fixed 10-question subjects. This is purely a
+// display grouping over the backend's per-question results; no backend change.
+const SUBJECTS = [
+  {name:"Intelligence",    from:1,  to:10, color:"#4f46e5"},
+  {name:"Science",         from:11, to:20, color:"#0ea5e9"},
+  {name:"Social Science",  from:21, to:30, color:"#f59e0b"},
+  {name:"Mathematics",     from:31, to:40, color:"#16a34a"},
+];
+
+// Build per-subject stats from a scored result's question_results.
+function groupBySubject(questionResults){
+  return SUBJECTS.map(s=>{
+    const qs = questionResults.filter(q=> q.question >= s.from && q.question <= s.to);
+    const correct = qs.filter(q=> q.status === "correct").length;
+    const wrong   = qs.filter(q=> q.status === "wrong").length;
+    const blank   = qs.filter(q=> q.status === "blank" || q.status === "multiple" || q.status === "not_detected").length;
+    return {...s, correct, wrong, blank, total: qs.length};
+  });
+}
+
+let lastScanResult = null;   // kept so the per-sheet PDF can be regenerated
+
+function escapeHtml(s){
+  return String(s ?? "").replace(/[&<>"']/g, c=>(
+    {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
 function renderScanResult(data, statusEl){
+  const out = document.getElementById("scanResult");
   if(data.scored === false){
+    statusEl.className = "status-line";
     statusEl.textContent =
-`Scanned (no answer key set \u2014 answers detected but not scored).
-Quality: sharpness=${data.quality.blur_score}, brightness=${data.quality.brightness}, bubbles found=${data.quality.bubbles_detected}/160
-${data.warnings.length? "Warnings: "+data.warnings.join("; ") : ""}`;
-    const qgrid = document.getElementById("qgrid");
-    qgrid.innerHTML = "";
-    Object.values(data.answers).forEach(a=>{
-      const div = document.createElement("div");
-      div.className = "badge " + (a.selected? "correct" : "blank");
-      div.textContent = `Q${a.question}:${a.selected ?? "-"}`;
-      qgrid.appendChild(div);
-    });
+      "Scanned — no answer key set, so answers were detected but not scored. Set the key first to see the subject-wise result.";
+    out.innerHTML = "";
     return;
   }
-  statusEl.textContent =
-`Score: ${data.total_marks} / ${data.max_marks}  (${data.percentage}%)  Grade: ${data.grade}
-Correct: ${data.correct}  Wrong: ${data.wrong}  Blank: ${data.blank}  Multiple: ${data.multiple}  Not detected: ${data.not_detected}
-Quality: sharpness=${data.quality.blur_score}, brightness=${data.quality.brightness}, bubbles found=${data.quality.bubbles_detected}/160
-${data.warnings.length? "Warnings: "+data.warnings.join("; ") : ""}`;
-  const qgrid = document.getElementById("qgrid");
-  qgrid.innerHTML = "";
-  data.question_results.forEach(qr=>{
-    const div = document.createElement("div");
-    div.className = "badge "+qr.status;
-    div.textContent = `Q${qr.question}:${qr.student_answer ?? "-"}`;
-    qgrid.appendChild(div);
-  });
+
+  lastScanResult = data;
+  const groups = groupBySubject(data.question_results);
+  const sid = document.getElementById("studentId").value || data.student_id || "";
+  const sname = document.getElementById("studentName").value || data.student_name || "";
+
+  statusEl.className = "status-line ok";
+  statusEl.textContent = "✓ Scored successfully";
+
+  const subjectCards = groups.map(g=>{
+    const pct = g.total ? Math.round(g.correct / g.total * 100) : 0;
+    return `<div class="subject">
+      <div class="top">
+        <div class="name"><span class="dot" style="background:${g.color}"></span>${g.name}</div>
+        <div class="frac">${g.correct}<small>/${g.total}</small></div>
+      </div>
+      <div class="bar"><i style="width:${pct}%; background:${g.color}"></i></div>
+      <div class="brk">
+        <span>✅ ${g.correct} correct</span>
+        <span>❌ ${g.wrong} wrong</span>
+        <span>⬜ ${g.blank} blank</span>
+      </div>
+    </div>`;
+  }).join("");
+
+  const badges = data.question_results.map(qr=>
+    `<div class="badge ${qr.status}">Q${qr.question}:${qr.student_answer ?? "-"}</div>`).join("");
+
+  out.innerHTML = `
+    <div class="score-hero">
+      <div class="big">${data.total_marks}<small>/${data.max_marks}</small></div>
+      <div class="meta">
+        <span>${data.percentage}%</span>
+        <span class="grade-pill">Grade ${data.grade}</span>
+        ${sname ? `<span>${escapeHtml(sname)}</span>` : ""}
+        ${sid ? `<span>#${escapeHtml(sid)}</span>` : ""}
+      </div>
+    </div>
+    <div class="subjects">${subjectCards}</div>
+    <div class="card">
+      <button class="primary" onclick="downloadResultPDF()">⬇️ Download result PDF</button>
+      <details class="qdetail">
+        <summary>Question-by-question detail</summary>
+        <div id="qgrid">${badges}</div>
+      </details>
+      <span class="hint">Quality: sharpness ${data.quality.blur_score}, brightness ${data.quality.brightness}, bubbles ${data.quality.bubbles_detected}/160.
+      ${data.warnings.length ? "Warnings: "+escapeHtml(data.warnings.join("; ")) : ""}</span>
+    </div>`;
+  out.scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+// ---- client-side grouped PDF (uses the browser's print-to-PDF) ----
+// Renders the just-scanned sheet as a clean, subject-grouped report and opens
+// the print dialog so the teacher can "Save as PDF". No backend involvement.
+function downloadResultPDF(){
+  const data = lastScanResult;
+  if(!data){ alert("Scan a sheet first."); return; }
+  const groups = groupBySubject(data.question_results);
+  const sid = document.getElementById("studentId").value || data.student_id || "";
+  const sname = document.getElementById("studentName").value || data.student_name || "";
+  const rows = groups.map(g=>`
+    <tr>
+      <td style="font-weight:600">${g.name}</td>
+      <td style="text-align:center">${g.correct} / ${g.total}</td>
+      <td style="text-align:center">${g.correct}</td>
+      <td style="text-align:center">${g.wrong}</td>
+      <td style="text-align:center">${g.blank}</td>
+    </tr>`).join("");
+
+  // Full 40-question detail, grouped by subject, rendered on its own page.
+  const optTxt = v => (v === null || v === undefined) ? "-" : v;
+  const statusTxt = s => String(s || "").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
+  const detailBlocks = groups.map(g=>{
+    const qs = data.question_results
+      .filter(q=> q.question >= g.from && q.question <= g.to)
+      .sort((a,b)=> a.question - b.question);
+    const qrows = qs.map(q=>`
+      <tr class="st-${q.status}">
+        <td style="text-align:center">${q.question}</td>
+        <td style="text-align:center">${optTxt(q.correct_answer)}</td>
+        <td style="text-align:center">${optTxt(q.student_answer)}</td>
+        <td style="text-align:center">${statusTxt(q.status)}</td>
+        <td style="text-align:center">${q.marks}</td>
+      </tr>`).join("");
+    return `<h3 class="subj"><span class="cdot" style="background:${g.color}"></span>${g.name} <small>(Q${g.from}\u2013${g.to}) &middot; ${g.correct}/${g.total}</small></h3>
+      <table class="qtbl">
+        <thead><tr><th>Q#</th><th>Correct</th><th>Marked</th><th>Status</th><th>Marks</th></tr></thead>
+        <tbody>${qrows}</tbody>
+      </table>`;
+  }).join("");
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+    <title>OMR Result${sname ? " - "+escapeHtml(sname) : ""}</title>
+    <style>
+      *{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:#1e293b;}
+      body{ margin:32px; }
+      h1{ margin:0 0 4px; font-size:22px; }
+      .muted{ color:#64748b; font-size:13px; margin:0 0 18px; }
+      .info{ font-size:14px; margin:0 0 18px; }
+      .info b{ display:inline-block; min-width:120px; }
+      table{ width:100%; border-collapse:collapse; margin-top:8px; font-size:14px; }
+      th,td{ border:1px solid #cbd5e1; padding:9px 12px; }
+      th{ background:#4f46e5; color:#fff; text-align:left; font-size:12px; text-transform:uppercase; letter-spacing:.5px; }
+      tfoot td{ font-weight:700; background:#eef2ff; }
+      .overall{ margin-top:22px; font-size:20px; font-weight:800; }
+      .overall span{ color:#4f46e5; }
+      .grade{ display:inline-block; margin-left:10px; background:#eef2ff; color:#4f46e5; padding:3px 12px; border-radius:999px; font-size:15px; }
+      .page-break{ page-break-before:always; }
+      h2.detail-title{ font-size:18px; margin:0 0 14px; }
+      h3.subj{ font-size:15px; margin:16px 0 6px; display:flex; align-items:center; gap:8px; }
+      h3.subj small{ color:#64748b; font-weight:600; }
+      .cdot{ display:inline-block; width:11px; height:11px; border-radius:3px; }
+      table.qtbl th{ font-size:11px; }
+      table.qtbl td{ font-size:13px; }
+      tr.st-correct td{ background:#f0fdf4; }
+      tr.st-wrong td{ background:#fef2f2; }
+      tr.st-blank td, tr.st-multiple td, tr.st-not_detected td{ background:#fffbeb; }
+      @media print{ body{ margin:16mm; } }
+    </style></head><body>
+      <h1>OMR Result Report</h1>
+      <p class="muted">Generated ${new Date().toLocaleString()}</p>
+      <p class="info">
+        ${sname ? `<b>Student name:</b> ${escapeHtml(sname)}<br>` : ""}
+        ${sid ? `<b>Roll no. / ID:</b> ${escapeHtml(sid)}<br>` : ""}
+      </p>
+      <table>
+        <thead><tr><th>Subject</th><th>Obtained / Total</th><th>Correct</th><th>Wrong</th><th>Blank</th></tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr>
+          <td>Overall</td>
+          <td style="text-align:center">${data.correct} / ${data.total_questions}</td>
+          <td style="text-align:center">${data.correct}</td>
+          <td style="text-align:center">${data.wrong}</td>
+          <td style="text-align:center">${data.blank + data.multiple + data.not_detected}</td>
+        </tr></tfoot>
+      </table>
+      <div class="overall">Overall score: <span>${data.total_marks} / ${data.max_marks}</span>
+        (${data.percentage}%) <span class="grade">Grade ${data.grade}</span></div>
+
+      <div class="page-break"></div>
+      <h2 class="detail-title">Question-by-question result (40 questions)</h2>
+      <p class="info">
+        ${sname ? `<b>Student name:</b> ${escapeHtml(sname)}<br>` : ""}
+        ${sid ? `<b>Roll no. / ID:</b> ${escapeHtml(sid)}<br>` : ""}
+      </p>
+      ${detailBlocks}
+      <script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script>
+    </body></html>`;
+  const w = window.open("", "_blank");
+  if(!w){ alert("Please allow pop-ups to download the PDF."); return; }
+  w.document.open(); w.document.write(html); w.document.close();
 }
 
 document.getElementById("snapCam").onclick = async ()=>{
@@ -699,13 +983,18 @@ function stopCamera(){
 // Walks the status line through the scanning pipeline while the request is
 // in-flight: Uploading -> Detecting Sheet -> Aligning -> Reading Answers ->
 // Generating Results (-> Completed on success, shown by renderScanResult).
-const SCAN_STEPS = ["Uploading", "Detecting Sheet", "Aligning", "Reading Answers", "Generating Results"];
+const SCAN_STEPS = ["Uploading", "Detecting sheet", "Aligning", "Reading answers", "Generating results"];
+function setStatus(statusEl, text, kind, spinner){
+  statusEl.className = "status-line" + (kind ? " " + kind : "");
+  statusEl.innerHTML = (spinner ? '<span class="spinner"></span>' : "") +
+    '<span>' + escapeHtml(text) + '</span>';
+}
 function startScanProgress(statusEl){
   let i = 0;
-  statusEl.textContent = SCAN_STEPS[0] + "\u2026";
+  setStatus(statusEl, SCAN_STEPS[0] + "\u2026", "", true);
   const t = setInterval(()=>{
     i = Math.min(i + 1, SCAN_STEPS.length - 1);
-    statusEl.textContent = SCAN_STEPS[i] + "\u2026";
+    setStatus(statusEl, SCAN_STEPS[i] + "\u2026", "", true);
   }, 600);
   return ()=>clearInterval(t);
 }
@@ -724,23 +1013,23 @@ document.getElementById("scanBtn").onclick = async ()=>{
   try{
     // Make sure a possibly-sleeping free-tier backend is awake before we upload,
     // so the request doesn't fail on a cold start.
-    const awake = await ensureBackendAwake(msg=>{ statusEl.textContent = msg; });
+    const awake = await ensureBackendAwake(msg=>{ setStatus(statusEl, msg, "", true); });
     if(!awake){
-      statusEl.textContent = friendlyFetchError(new TypeError("Failed to fetch"));
+      setStatus(statusEl, friendlyFetchError(new TypeError("Failed to fetch")), "err", false);
       return;
     }
     stopProgress = startScanProgress(statusEl);
     const res = await fetchWithRetry(
       await apiUrl("/api/scan-and-score"), {method:"POST", body: fd},
-      msg=>{ statusEl.textContent = msg; },
+      msg=>{ setStatus(statusEl, msg, "", true); },
     );
     const data = await parseJSON(res);
     stopProgress();
-    if(!res.ok){ statusEl.textContent = "Error: "+(data.detail||JSON.stringify(data)); return; }
+    if(!res.ok){ setStatus(statusEl, "Error: "+(data.detail||JSON.stringify(data)), "err", false); return; }
     renderScanResult(data, statusEl);
   }catch(err){
     stopProgress();
-    statusEl.textContent = "Request failed: "+friendlyFetchError(err);
+    setStatus(statusEl, "Request failed: "+friendlyFetchError(err), "err", false);
   }finally{
     btn.disabled = false;
   }
