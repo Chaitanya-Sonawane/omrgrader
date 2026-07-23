@@ -96,6 +96,8 @@
   .grid-key{ display:grid; grid-template-columns:1fr 1fr; grid-template-rows:repeat(20,auto); grid-auto-flow:column; gap:8px 12px; margin-bottom:18px; }
   .key-cell{ border:1px solid var(--line); border-radius:12px; padding:10px; background:var(--slate-bg); }
   .key-cell label{ font-size:12px; font-weight:700; color:var(--brand); display:block; margin-bottom:7px; }
+  .key-actions{ display:flex; gap:10px; flex-wrap:wrap; }
+  .key-actions .primary, .key-actions .ghost{ flex:1 1 160px; }
   .opt-row{ display:flex; gap:6px; }
   .opt-btn{
     flex:1; font-size:14px; font-weight:600; cursor:pointer; min-height:40px;
@@ -279,7 +281,10 @@
       </div>
 
       <div class="grid-key" id="keyGrid"></div>
-      <button class="primary" id="saveKey">💾 Save answer key</button>
+      <div class="key-actions">
+        <button class="primary" id="saveKey">💾 Save answer key</button>
+        <button class="ghost" id="newKey">🆕 New answer key</button>
+      </div>
       <span class="hint" id="keyStatus"></span>
     </div>
   </section>
@@ -632,6 +637,19 @@ document.getElementById("saveKey").onclick = async ()=>{
   }catch(err){
     document.getElementById("keyStatus").textContent = "Saved locally, but couldn't reach server: "+friendlyFetchError(err);
   }
+};
+
+// ---- start a new / updated answer key (clear everything) ----
+function clearKey(){
+  keyGrid.querySelectorAll(".opt-btn.selected").forEach(b=> b.classList.remove("selected"));
+  const bulk = document.getElementById("bulkKey");
+  if(bulk) bulk.value = "";
+}
+document.getElementById("newKey").onclick = ()=>{
+  if(!confirm("Start a new answer key? This clears the current answers so you can enter and save an updated key.")) return;
+  clearKey();
+  document.getElementById("keyStatus").textContent =
+    "New answer key started \u2014 tap the correct options (or paste in bulk), then \"Save answer key\".";
 };
 
 // Restore any previously saved key on load.
