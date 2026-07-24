@@ -418,6 +418,22 @@ function setSavedApiBase(v){
 function configuredRemoteBase(){
   return getSavedApiBase() || ((typeof window !== "undefined" && window.OMR_API_BASE) || "").replace(/\/$/, "");
 }
+// Ordered list of backend URLs to try when same-origin has no API. A saved
+// runtime override (from the settings panel) always comes first, then the
+// optional config.js failover list, then the single config.js value. This lets
+// the app survive a dead/changed primary URL as long as ANY listed host is live.
+function candidateRemoteBases(){
+  const list = [];
+  const push = (v)=>{
+    v = (v || "").replace(/\/$/, "");
+    if(v && list.indexOf(v) === -1) list.push(v);
+  };
+  push(getSavedApiBase());
+  const cands = (typeof window !== "undefined" && window.OMR_API_BASE_CANDIDATES) || [];
+  if(Array.isArray(cands)) cands.forEach(push);
+  push((typeof window !== "undefined" && window.OMR_API_BASE) || "");
+  return list;
+}
 let _apiBase = null;
 const sleep = (ms)=> new Promise(r=> setTimeout(r, ms));
 
@@ -459,9 +475,15 @@ async function getApiBase(){
   if(_apiBase !== null) return _apiBase;
   // 1. Prefer the origin that served this page, if it exposes the API.
   if(await probeHealth("", 4000)){ _apiBase = ""; return _apiBase; }
-  // 2. Otherwise fall back to the configured remote backend (runtime override
-  //    from settings, else config.js).
-  _apiBase = configuredRemoteBase();
+  // 2. Otherwise probe each configured remote backend and use the first that is
+  //    actually live. This auto-fails-over if the primary URL is dead/changed.
+  const candidates = candidateRemoteBases();
+  for(const base of candidates){
+    if(await probeHealth(base, 5000)){ _apiBase = base; return _apiBase; }
+  }
+  // 3. None answered right now (e.g. all asleep). Keep the first configured base
+  //    so the wake-up polling can still try to revive it.
+  _apiBase = candidates[0] || "";
   return _apiBase;
 }
 // Force API base re-resolution (e.g. after the user saves a new server URL).

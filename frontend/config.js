@@ -22,3 +22,13 @@
 // dead (Render "no-server"). If you deploy the backend elsewhere, update this
 // value to your own live base URL (no trailing slash).
 window.OMR_API_BASE = "https://omrgrader.onrender.com";
+
+// OPTIONAL failover list. To make the app resilient against a single backend
+// URL going dead again, list every backend host you have here (no trailing
+// slash). On startup the app probes same-origin first, then each candidate
+// below in order, and automatically uses the first one whose /api/health
+// answers. This means if the primary URL ever changes/dies, the app keeps
+// working as long as ANY listed host is live - no code edit + redeploy needed.
+window.OMR_API_BASE_CANDIDATES = [
+  "https://omrgrader.onrender.com",
+];
