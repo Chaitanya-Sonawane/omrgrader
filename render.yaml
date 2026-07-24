@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: omrgrader-backend
+    name: omrgrader
     runtime: python
     rootDir: backend
     plan: free

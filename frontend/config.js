@@ -16,7 +16,9 @@
 //
 // NOTE: This must be a live, permanent backend URL. Temporary tunnels (e.g.
 // ngrok free-tier URLs) expire and cause "Cannot reach the scanning server"
-// errors once the tunnel is gone. We point at the permanent Render service
-// defined in render.yaml (service name: omrgrader-backend). If you deploy the
-// backend elsewhere, update this value to your own live base URL.
-window.OMR_API_BASE = "https://omrgrader-backend.onrender.com";
+// errors once the tunnel is gone. This points at the live Render service that
+// actually serves the API (verified: https://omrgrader.onrender.com/api/health
+// returns {"status":"ok"} from uvicorn). The older "omrgrader-backend" host is
+// dead (Render "no-server"). If you deploy the backend elsewhere, update this
+// value to your own live base URL (no trailing slash).
+window.OMR_API_BASE = "https://omrgrader.onrender.com";
