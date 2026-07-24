@@ -14,4 +14,9 @@
 //
 //   window.OMR_API_BASE = "https://omrgrader-backend.onrender.com";
 //
-window.OMR_API_BASE = "https://rigorously-robeless-alva.ngrok-free.dev";
+// NOTE: This must be a live, permanent backend URL. Temporary tunnels (e.g.
+// ngrok free-tier URLs) expire and cause "Cannot reach the scanning server"
+// errors once the tunnel is gone. We point at the permanent Render service
+// defined in render.yaml (service name: omrgrader-backend). If you deploy the
+// backend elsewhere, update this value to your own live base URL.
+window.OMR_API_BASE = "https://omrgrader-backend.onrender.com";

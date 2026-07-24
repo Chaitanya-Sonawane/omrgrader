@@ -340,6 +340,23 @@
 
       <button class="primary" id="scanBtn">✨ Scan &amp; score this sheet</button>
       <div id="scanStatus"></div>
+
+      <!-- Backend server settings: lets the user point the app at any live
+           backend at runtime (saved in localStorage) without editing code or
+           redeploying. Handy when the deployed URL changes or is unknown. -->
+      <details id="serverSettings" style="margin-top:14px;">
+        <summary style="cursor:pointer; font-size:13px; color:#64748b;">⚙️ Scanning server settings</summary>
+        <div class="field" style="margin-top:10px;">
+          <label>Backend server URL</label>
+          <input id="apiBaseInput" type="url" inputmode="url" autocapitalize="off" spellcheck="false"
+                 placeholder="https://your-backend.example.com" />
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+          <button class="ghost" id="saveApiBase" type="button">Save &amp; test</button>
+          <button class="ghost" id="clearApiBase" type="button">Reset to default</button>
+        </div>
+        <div id="apiBaseStatus" style="margin-top:8px; font-size:13px;"></div>
+      </details>
     </div>
 
     <!-- grouped subject result for the just-scanned sheet -->
@@ -382,7 +399,25 @@
 // production work with zero config and no "Failed to fetch" surprises.
 // window.OMR_API_BASE (config.js) is only a fallback used when the same origin
 // has no backend (e.g. the UI is hosted on Netlify and the API lives on Render).
-const REMOTE_API_BASE = ((typeof window !== "undefined" && window.OMR_API_BASE) || "").replace(/\/$/, "");
+// A user can override the backend URL at runtime from the "Scanning server
+// settings" panel; that choice is saved here and takes priority over the
+// config.js fallback so a changed/unknown deployment URL never requires a code
+// edit + redeploy.
+const API_BASE_STORE = "omr_api_base_v1";
+function getSavedApiBase(){
+  try{ return (localStorage.getItem(API_BASE_STORE) || "").replace(/\/$/, ""); }
+  catch(_){ return ""; }
+}
+function setSavedApiBase(v){
+  try{
+    if(v){ localStorage.setItem(API_BASE_STORE, v); }
+    else { localStorage.removeItem(API_BASE_STORE); }
+  }catch(_){}
+}
+// The configured fallback = a saved runtime override, else config.js value.
+function configuredRemoteBase(){
+  return getSavedApiBase() || ((typeof window !== "undefined" && window.OMR_API_BASE) || "").replace(/\/$/, "");
+}
 let _apiBase = null;
 const sleep = (ms)=> new Promise(r=> setTimeout(r, ms));
 
@@ -424,10 +459,13 @@ async function getApiBase(){
   if(_apiBase !== null) return _apiBase;
   // 1. Prefer the origin that served this page, if it exposes the API.
   if(await probeHealth("", 4000)){ _apiBase = ""; return _apiBase; }
-  // 2. Otherwise fall back to the explicitly configured remote backend.
-  _apiBase = REMOTE_API_BASE;
+  // 2. Otherwise fall back to the configured remote backend (runtime override
+  //    from settings, else config.js).
+  _apiBase = configuredRemoteBase();
   return _apiBase;
 }
+// Force API base re-resolution (e.g. after the user saves a new server URL).
+function resetApiBase(){ _apiBase = null; }
 
 // Free hosts (e.g. Render free tier) sleep when idle and take ~30-60s to wake.
 // Rather than failing on the first request, wake the backend by polling its
@@ -485,7 +523,11 @@ function friendlyFetchError(err){
   const msg = (err && err.message) || String(err);
   const isNetwork = err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(msg);
   if(isNetwork){
-    const where = REMOTE_API_BASE ? (" (tried " + REMOTE_API_BASE + ")") : "";
+    // Report the base we actually resolved to (same-origin or the configured
+    // remote), so the message points at the real target instead of only the
+    // remote fallback.
+    const tried = (_apiBase !== null && _apiBase !== "") ? _apiBase : configuredRemoteBase();
+    const where = tried ? (" (tried " + tried + ")") : "";
     return "Cannot reach the scanning server" + where + ". " +
       "Please check your internet connection and that the backend is running, then try again. " +
       "If it was just deployed on a free host it may be waking up - retry in ~30s.";
@@ -1142,6 +1184,52 @@ async function openExport(kind){
     alert(friendlyFetchError(err));
   }
 }
+
+// ---- scanning server settings (runtime backend URL override) ----
+(function initServerSettings(){
+  const input = document.getElementById("apiBaseInput");
+  const statusEl = document.getElementById("apiBaseStatus");
+  const saveBtn = document.getElementById("saveApiBase");
+  const clearBtn = document.getElementById("clearApiBase");
+  if(!input || !saveBtn) return;
+
+  // Prefill with the currently-saved override (blank = use built-in default).
+  input.value = getSavedApiBase();
+  input.placeholder = ((typeof window !== "undefined" && window.OMR_API_BASE) || "https://your-backend.example.com");
+
+  function normalize(v){
+    v = (v || "").trim().replace(/\/$/, "");
+    if(v && !/^https?:\/\//i.test(v)) v = "https://" + v;
+    return v;
+  }
+
+  saveBtn.onclick = async ()=>{
+    const url = normalize(input.value);
+    setSavedApiBase(url);
+    resetApiBase();                      // re-resolve on next request
+    input.value = url;
+    statusEl.textContent = "Testing " + (url || "same-origin / default") + "\u2026";
+    statusEl.style.color = "#64748b";
+    // Probe the newly-chosen backend so the user gets instant feedback.
+    const target = url || (await getApiBase());
+    const ok = await probeHealth(target, 8000);
+    if(ok){
+      statusEl.textContent = "\u2713 Connected. Scanning server is reachable.";
+      statusEl.style.color = "#16a34a";
+    }else{
+      statusEl.textContent = "\u2717 Could not reach that server. Check the URL and that the backend is running (a free host may take ~30s to wake).";
+      statusEl.style.color = "#dc2626";
+    }
+  };
+
+  clearBtn.onclick = ()=>{
+    setSavedApiBase("");
+    resetApiBase();
+    input.value = "";
+    statusEl.textContent = "Reset to the built-in default. Reopen scan to reconnect.";
+    statusEl.style.color = "#64748b";
+  };
+})();
 
 // ---- results tab ----
 async function loadResults(){
