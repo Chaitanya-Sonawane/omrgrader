@@ -20,3 +20,9 @@ Thumbs.db
 
 # Netlify
 .netlify/
+
+# Android build/cache
+android/.gradle/
+android/build/
+android/app/build/
+.gradle/

@@ -29,6 +29,12 @@ window.OMR_API_BASE = "https://omrgrader.onrender.com";
 // below in order, and automatically uses the first one whose /api/health
 // answers. This means if the primary URL ever changes/dies, the app keeps
 // working as long as ANY listed host is live - no code edit + redeploy needed.
+// Primary/fallback order: the app probes these top-to-bottom and uses the first
+// that answers /api/health. To make Hugging Face Spaces (Docker) the PRIMARY
+// backend with Render as the fallback, uncomment the HF line and replace
+// <your-username> with your actual HF username (the Space URL is shown as
+// "Running" on the Space page, e.g. https://<user>-omr-grader.hf.space).
 window.OMR_API_BASE_CANDIDATES = [
-  "https://omrgrader.onrender.com",
+  // "https://<your-username>-omr-grader.hf.space", // Hugging Face Spaces (primary) - uncomment & set username
+  "https://omrgrader.onrender.com",                 // Render (fallback)
 ];

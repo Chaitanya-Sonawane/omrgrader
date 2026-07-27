@@ -238,13 +238,76 @@
   table.qtbl tr.st-correct td{ background:var(--green-bg); }
   table.qtbl tr.st-wrong td{ background:var(--red-bg); }
   table.qtbl tr.st-blank td, table.qtbl tr.st-multiple td, table.qtbl tr.st-not_detected td{ background:var(--amber-bg); }
+
+  /* ---------- session sidebar ---------- */
+  .icon-btn{ background:rgba(255,255,255,.18); border:none; color:#fff; font-size:18px; cursor:pointer;
+    width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; }
+  .icon-btn:active{ transform:scale(.95); }
+  .header-right{ display:flex; align-items:center; gap:10px; }
+  .sync-state{ font-size:11px; font-weight:700; padding:4px 10px; border-radius:999px; background:rgba(255,255,255,.2); color:#fff; white-space:nowrap; }
+  .sync-state.sync-saving{ background:#f59e0b; }
+  .sync-state.sync-saved{ background:#16a34a; }
+  .sync-state.sync-offline{ background:#64748b; }
+  .sync-state.sync-retry{ background:#dc2626; }
+  #sidebarBackdrop{ position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:60; display:none; }
+  #sidebarBackdrop.show{ display:block; }
+  #sessionSidebar{ position:fixed; top:0; left:0; bottom:0; width:300px; max-width:85vw; background:#fff; z-index:70;
+    box-shadow:2px 0 24px rgba(30,41,59,.18); transform:translateX(-105%); transition:transform .25s ease;
+    display:flex; flex-direction:column; }
+  #sessionSidebar.open{ transform:translateX(0); }
+  .sidebar-head{ padding:calc(16px + env(safe-area-inset-top,0px)) 16px 14px; background:linear-gradient(135deg,var(--bg-grad-1),var(--bg-grad-2)); color:#fff;
+    display:flex; align-items:center; justify-content:space-between; }
+  .sidebar-head h3{ margin:0; font-size:16px; font-weight:800; }
+  .sidebar-body{ flex:1; overflow-y:auto; padding:12px; }
+  .sess-item{ display:flex; align-items:center; gap:8px; padding:12px; border-radius:12px; cursor:pointer;
+    border:1.5px solid var(--line); margin-bottom:8px; background:#fff; }
+  .sess-item.active{ border-color:var(--brand); background:#f5f3ff; }
+  .sess-main{ flex:1; min-width:0; }
+  .sess-name{ font-weight:700; font-size:14px; }
+  .sess-meta{ font-size:11px; color:var(--muted); margin-top:2px; }
+  .sess-rename{ background:none; border:none; cursor:pointer; font-size:15px; padding:4px; }
+  .sess-empty, .sidebar-foot .hint{ color:var(--muted); font-size:12.5px; }
+  .sidebar-foot{ padding:12px; border-top:1px solid var(--line); }
+
+  /* ---------- excel + autocomplete ---------- */
+  #excelStatus{ font-size:12.5px; color:var(--muted); margin-top:6px; }
+  .field.searchable{ position:relative; }
+  .ac-drop{ position:absolute; left:0; right:0; top:100%; z-index:30; background:#fff; border:1px solid var(--line);
+    border-radius:12px; box-shadow:var(--shadow-lg); margin-top:4px; max-height:240px; overflow-y:auto; display:none; }
+  .ac-item{ padding:10px 14px; cursor:pointer; display:flex; gap:10px; align-items:baseline; }
+  .ac-item:hover{ background:#f5f3ff; }
+  .ac-id{ font-weight:700; color:var(--brand); font-size:13px; min-width:46px; }
+  .ac-name{ font-size:14px; }
+  .ac-empty{ padding:10px 14px; color:var(--muted); font-size:13px; }
+  #assignInfo{ font-size:12.5px; color:var(--brand); font-weight:600; margin-top:8px; display:block; min-height:16px; }
 </style>
 </head>
 <body>
 
+<!-- session history sidebar -->
+<div id="sidebarBackdrop"></div>
+<aside id="sessionSidebar">
+  <div class="sidebar-head">
+    <h3>🗂️ Scan sessions</h3>
+    <button class="icon-btn" id="closeSidebarBtn" title="Close">✕</button>
+  </div>
+  <div class="sidebar-body">
+    <div id="sessionList"></div>
+  </div>
+  <div class="sidebar-foot">
+    <button class="primary" id="newSessionBtn">➕ New session</button>
+    <span class="hint">Tap a session to reopen it exactly where you left off. Tap ✏️ to rename.</span>
+  </div>
+</aside>
+
 <header>
-  <h1><span class="logo">📝</span> OMR <span>Grader</span></h1>
-  <div class="tag">Scan · Score · Report</div>
+  <h1>
+    <button class="icon-btn" id="openSidebarBtn" title="Sessions" style="margin-right:4px;">☰</button>
+    <span class="logo">📝</span> OMR <span>Grader</span>
+  </h1>
+  <div class="header-right">
+    <span class="sync-state sync-saved" id="syncState">Saved</span>
+  </div>
 </header>
 
 <main>
@@ -333,10 +396,31 @@
 
       <img id="preview" />
 
-      <div class="student-meta">
-        <div class="field"><label>Student ID / Roll No.</label><input id="studentId" inputmode="numeric" placeholder="e.g. 8138" /></div>
-        <div class="field"><label>Student name (optional)</label><input id="studentName" placeholder="e.g. Bhosale Sudarshan" /></div>
+      <!-- master Excel (student database for this session) -->
+      <div class="field" style="margin:12px 0;">
+        <label>Master Excel sheet (students &amp; marks) — <span id="activeSessionName" style="color:var(--brand);font-weight:700;">session</span></label>
+        <button class="ghost" id="uploadExcelBtn" type="button" onclick="document.getElementById('excelInput').click()">📗 Upload / replace master Excel (.xlsx/.xls)</button>
+        <input type="file" id="excelInput" accept=".xlsx,.xls" style="display:none" />
+        <div id="excelStatus">No master Excel uploaded for this session yet.</div>
       </div>
+
+      <div class="student-meta">
+        <div class="field searchable">
+          <label>Student ID / Roll No.</label>
+          <input id="studentId" autocomplete="off" placeholder="Type ID/roll to search…" />
+          <div class="ac-drop" id="studentIdDrop"></div>
+        </div>
+        <div class="field searchable">
+          <label>Student name</label>
+          <input id="studentName" autocomplete="off" placeholder="Type name (English/मराठी) to search…" />
+          <div class="ac-drop" id="studentNameDrop"></div>
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:6px;">
+        <label>Write score into subject column</label>
+        <select id="subjectColumnSelect" style="font-family:var(--sans); font-size:16px; padding:12px 14px; border:1.5px solid var(--line); border-radius:12px; width:100%; background:#fff;"></select>
+      </div>
+      <span id="assignInfo"></span>
 
       <button class="primary" id="scanBtn">✨ Scan &amp; score this sheet</button>
       <div id="scanStatus"></div>
@@ -372,6 +456,7 @@
       <div class="export-row">
         <button class="ghost" onclick="openExport('excel')">⬇️ Excel (.xlsx)</button>
         <button class="ghost" onclick="openExport('pdf')">⬇️ Class PDF</button>
+        <button class="ghost" id="downloadExcelBtn">📗 Download updated Excel</button>
         <button class="ghost" id="clearResults">🗑️ Clear all</button>
       </div>
       <div class="table-wrap">
@@ -391,7 +476,15 @@
   <button class="nav-btn" data-tab="results"><span class="ico">📊</span>Results</button>
 </nav>
 
+<!-- SheetJS (Excel import/export) -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- Firebase (compat build so it works with plain <script>, no bundler) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script src="config.js"></script>
+<script src="firebase-config.js"></script>
+<script src="persistence.js"></script>
 <script>
 // ---- API base resolution ----
 // The backend normally serves this very page, so we prefer the SAME ORIGIN the
@@ -953,6 +1046,11 @@ function renderScanResult(data, statusEl){
 
   statusEl.className = "status-line ok";
   statusEl.textContent = "✓ Scored successfully";
+
+  // Hand the scored result to the persistence/session layer so it can be
+  // autosaved and written into the selected student's Excel row. This is a
+  // pure add-on; it never alters the scan/score data above.
+  try{ if(window.OMRSession && window.OMRSession.onScored) window.OMRSession.onScored(data); }catch(_){}
 
   const subjectCards = groups.map(g=>{
     const pct = g.total ? Math.round(g.correct / g.total * 100) : 0;
