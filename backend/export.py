@@ -76,6 +76,112 @@ def build_excel_report(student_results: list) -> bytes:
     return buf.getvalue()
 
 
+# ---------------------------------------------------------------------------
+# NMMS weekly result sheet — fixed template built entirely on the backend.
+# The heading, student list, columns and formatting mirror the original PDF
+# निकालपत्रक exactly. संवर्ग, the four subject-mark columns and एकूण are left
+# blank for the user to fill in later. No merged cells; header is bold; columns
+# auto-fit. Output file name: NMMS_Result_Test_4.xlsx
+# ---------------------------------------------------------------------------
+NMMS_TITLE_LINES = [
+    "रयत शिक्षण संस्थेचे",
+    "नानासाहेब कडू पाटील विद्यालय, सातराळ",
+    "NMMS साप्ताहिक निकालपत्रक",
+    "सन २०२६–२७",
+    "इयत्ता : ८ वी अ  सराव चाचणी क्र. ४  DATE: २७ जुलै २०२६",
+]
+
+NMMS_HEADERS = [
+    "प. क्र.", "विद्यार्थ्याचे नाव", "संवर्ग",
+    "बुद्धिमत्ता", "विज्ञान", "स.शास्त्र", "गणित", "एकूण",
+]
+
+NMMS_STUDENTS = [
+    "दिघे सात्विक प्रमोद",
+    "कुलकर्णी ओंकार अभिजित",
+    "साबळे रुद्र नानासाहेब",
+    "दिघे साई अरुण",
+    "नालकर आदित्य नरेंद्र",
+    "कडू कृष्णा विवेक",
+    "दिघे सार्थक विजय",
+    "मुसमाडे अथर्व रविंद्र",
+    "कडू समर्थ जयराम",
+    "सूर्यवंशी प्रसाद पोपट",
+    "सरोदे समर्थ मनोज",
+    "गागरे प्रणव कैलास",
+    "पवार मंथन अंकुश",
+    "अनाप मितेश नानासाहेब",
+    "अनाप कृष्णा रोहिदास",
+    "जोर्वेकर विराज श्रीकांत",
+    "शिंदे सार्थक नितीन",
+    "जोर्वेकर सार्थक श्रीधर",
+    "पठारे मयूर गणेश",
+    "अनाप प्रणव राजू",
+    "अनाप साईनाथ अशोक",
+    "काळे संकेत रविंद्र",
+    "प्रधान श्रेयस चंद्रकांत",
+    "उपाध्ये कृष्णा विजय",
+    "शिंदे निखील गोरक्षनाथ",
+    "अनाप चेतन सुरेश",
+    "पर्वत सार्थक संदीप",
+    "गायकवाड रुदांत संदीप",
+    "भोसले सुदर्शन सुनील",
+    "शेजवळ दर्शन मधुकर",
+    "गोफणे अनिकेत गोरक्ष",
+    "जोशी अथर्व सुनील",
+    "बलमे सिद्धार्थ सुखदेव",
+    "चितळकर प्रसाद लालचंद",
+    "सांगळे सुजय गोरक्षनाथ",
+]
+
+NMMS_FILENAME = "NMMS_Result_Test_4.xlsx"
+
+
+def build_nmms_result_template() -> bytes:
+    """Build the NMMS weekly result sheet exactly as the original PDF.
+
+    Title lines, header row and the fixed roll-number/student-name list are
+    filled in; संवर्ग, the four subject-mark columns and एकूण are left blank so
+    the user can enter them (or add an एकूण formula) later. Header is bold,
+    columns auto-fit, and there are no merged cells.
+    """
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "NMMS निकालपत्रक"
+
+    # --- title block (each line in its own cell, no merges) ---
+    for line in NMMS_TITLE_LINES:
+        ws.append([line])
+        ws[f"A{ws.max_row}"].font = Font(bold=True)
+        ws[f"A{ws.max_row}"].alignment = Alignment(horizontal="left")
+
+    ws.append([])  # spacer row
+
+    # --- bold header row ---
+    ws.append(NMMS_HEADERS)
+    header_row = ws.max_row
+    for cell in ws[header_row]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center")
+
+    # --- fixed student rows (marks/संवर्ग/एकूण left blank) ---
+    for i, name in enumerate(NMMS_STUDENTS, start=1):
+        ws.append([i, name, "", "", "", "", "", ""])
+
+    # --- auto-fit column widths from the longest visible value ---
+    for c in range(1, len(NMMS_HEADERS) + 1):
+        letter = get_column_letter(c)
+        longest = 0
+        for cell in ws[letter]:
+            if cell.value is not None:
+                longest = max(longest, len(str(cell.value)))
+        ws.column_dimensions[letter].width = max(8, longest + 2)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def build_pdf_report(student_results: list, dashboard: dict | None = None) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=15 * mm, bottomMargin=15 * mm)

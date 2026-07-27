@@ -396,13 +396,7 @@
 
       <img id="preview" />
 
-      <!-- master Excel (student database for this session) -->
-      <div class="field" style="margin:12px 0;">
-        <label>Master Excel sheet (students &amp; marks) — <span id="activeSessionName" style="color:var(--brand);font-weight:700;">session</span></label>
-        <button class="ghost" id="uploadExcelBtn" type="button" onclick="document.getElementById('excelInput').click()">📗 Upload / replace master Excel (.xlsx/.xls)</button>
-        <input type="file" id="excelInput" accept=".xlsx,.xls" style="display:none" />
-        <div id="excelStatus">No master Excel uploaded for this session yet.</div>
-      </div>
+      <span id="activeSessionName" style="display:none;">session</span>
 
       <div class="student-meta">
         <div class="field searchable">
@@ -454,11 +448,12 @@
       <p class="sub">Every sheet scored this session.</p>
       <div class="dash-stats" id="dashStats"></div>
       <div class="export-row">
-        <button class="ghost" onclick="openExport('excel')">⬇️ Excel (.xlsx)</button>
+        <button class="primary" onclick="openExport('nmms-template')">📗 NMMS निकालपत्रक Excel</button>
+        <button class="ghost" onclick="openExport('excel')">⬇️ Class results (.xlsx)</button>
         <button class="ghost" onclick="openExport('pdf')">⬇️ Class PDF</button>
-        <button class="ghost" id="downloadExcelBtn">📗 Download updated Excel</button>
         <button class="ghost" id="clearResults">🗑️ Clear all</button>
       </div>
+      <span class="hint">The NMMS निकालपत्रक Excel (heading, विद्यार्थ्यांची यादी and columns) is generated on the server as <b>NMMS_Result_Test_4.xlsx</b> — ready to fill in.</span>
       <div class="table-wrap">
         <table id="resultsTable">
           <thead><tr><th>ID</th><th>Name</th><th>Correct</th><th>Wrong</th><th>Blank</th><th>Marks</th><th>%</th><th>Grade</th></tr></thead>

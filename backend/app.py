@@ -29,7 +29,7 @@ from pydantic import BaseModel
 from omr_engine import scan_omr_sheet, BubbleResult
 from frame_quality import check_frame_quality, process_captured_image, reset_tracker
 from scoring import score_sheet, batch_dashboard, grade_for_percentage, StudentResult
-from export import build_excel_report, build_pdf_report
+from export import build_excel_report, build_pdf_report, build_nmms_result_template, NMMS_FILENAME
 
 app = FastAPI(title="OMR Scanner & Grader")
 
@@ -264,6 +264,18 @@ def export_excel():
         io.BytesIO(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=omr_results.xlsx"},
+    )
+
+
+@app.get("/api/export/nmms-template")
+def export_nmms_template():
+    """Return the fixed NMMS weekly result sheet (heading + student list) as a
+    ready-to-fill .xlsx generated entirely on the backend."""
+    data = build_nmms_result_template()
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={NMMS_FILENAME}"},
     )
 
 
