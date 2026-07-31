@@ -137,23 +137,66 @@ NMMS_STUDENTS = [
 NMMS_FILENAME = "NMMS_Result_Test_4.xlsx"
 
 
-def build_nmms_result_template() -> bytes:
+# the four subject columns in the order they appear in NMMS_HEADERS
+NMMS_SUBJECT_ORDER = ["बुद्धिमत्ता", "विज्ञान", "स.शास्त्र", "गणित"]
+
+
+def _index_results_by_student(results):
+    """Build a lookup from a list of scanned-result dicts, keyed by both roll
+    number (str) and normalized student name, so a student's four subject marks
+    + एकूण total can be matched to their fixed roster row."""
+    by_roll, by_name = {}, {}
+    for r in results or []:
+        if not isinstance(r, dict):
+            continue
+        subjects = r.get("subjects") or {}
+        total = r.get("total")
+        if total is None:
+            total = sum(v for v in subjects.values() if isinstance(v, (int, float)))
+        entry = {"subjects": subjects, "total": total}
+        rid = r.get("studentId")
+        if rid not in (None, ""):
+            by_roll[str(rid).strip()] = entry
+        name = r.get("studentName")
+        if name:
+            by_name[str(name).strip()] = entry
+    return by_roll, by_name
+
+
+def build_nmms_result_template(results=None) -> bytes:
     """Build the NMMS weekly result sheet exactly as the original PDF.
 
     Title lines, header row and the fixed roll-number/student-name list are
-    filled in; संवर्ग, the four subject-mark columns and एकूण are left blank so
-    the user can enter them (or add an एकूण formula) later. Header is bold,
-    columns auto-fit, and there are no merged cells.
+    always filled in. When ``results`` (a list of scanned-result dicts with
+    ``studentId``/``studentName``/``subjects``/``total``) is provided, each
+    matching student's four subject cells + एकूण are auto-filled; संवर्ग and any
+    unmatched student's marks stay blank for the user to complete. Header is
+    bold, columns auto-fit, and there are no merged cells.
     """
+    by_roll, by_name = _index_results_by_student(results)
     wb = Workbook()
     ws = wb.active
     ws.title = "NMMS निकालपत्रक"
 
-    # --- title block (each line in its own cell, no merges) ---
+    ncols = len(NMMS_HEADERS)
+    last_col = get_column_letter(ncols)
+
+    # --- title block ---
+    # The heading text is written in column A but centered ACROSS the whole
+    # table (A..last_col) using "centerContinuous" alignment. This visually
+    # centers the title over the table WITHOUT merging any cells and, crucially,
+    # without letting the long title text stretch column A out of alignment.
     for line in NMMS_TITLE_LINES:
         ws.append([line])
-        ws[f"A{ws.max_row}"].font = Font(bold=True)
-        ws[f"A{ws.max_row}"].alignment = Alignment(horizontal="left")
+        row = ws.max_row
+        ws[f"A{row}"].value = line
+        ws[f"A{row}"].font = Font(bold=True)
+        # apply centerContinuous to every cell in the title span so the text
+        # from column A is centered across A..last_col
+        for c in range(1, ncols + 1):
+            ws.cell(row=row, column=c).alignment = Alignment(
+                horizontal="centerContinuous", vertical="center"
+            )
 
     ws.append([])  # spacer row
 
@@ -162,19 +205,42 @@ def build_nmms_result_template() -> bytes:
     header_row = ws.max_row
     for cell in ws[header_row]:
         cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center")
+        cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    # --- fixed student rows (marks/संवर्ग/एकूण left blank) ---
+    first_data_row = header_row + 1
+
+    # --- fixed student rows (संवर्ग always blank; marks/एकूण filled if scanned) ---
     for i, name in enumerate(NMMS_STUDENTS, start=1):
-        ws.append([i, name, "", "", "", "", "", ""])
+        # Match this fixed roster row to a scanned result by roll no. or name.
+        match = by_roll.get(str(i)) or by_name.get(name.strip())
+        subj_marks = ["", "", "", ""]
+        total_val = ""
+        if match:
+            subjects = match["subjects"]
+            subj_marks = [subjects.get(s, "") for s in NMMS_SUBJECT_ORDER]
+            total_val = match["total"]
+        ws.append([i, name, "", *subj_marks, total_val])
+        row = ws.max_row
+        # roll no. centered, name left-aligned, the fill-in columns centered
+        ws.cell(row=row, column=1).alignment = Alignment(horizontal="center")
+        ws.cell(row=row, column=2).alignment = Alignment(horizontal="left")
+        for c in range(3, ncols + 1):
+            ws.cell(row=row, column=c).alignment = Alignment(horizontal="center")
 
-    # --- auto-fit column widths from the longest visible value ---
-    for c in range(1, len(NMMS_HEADERS) + 1):
+    last_data_row = ws.max_row
+
+    # --- auto-fit column widths ---
+    # IMPORTANT: only the header row and the student data rows are measured.
+    # The title rows are intentionally EXCLUDED, otherwise the long heading text
+    # sitting in column A would blow up the प. क्र. column and misalign the
+    # whole table.
+    for c in range(1, ncols + 1):
         letter = get_column_letter(c)
-        longest = 0
-        for cell in ws[letter]:
-            if cell.value is not None:
-                longest = max(longest, len(str(cell.value)))
+        longest = len(str(NMMS_HEADERS[c - 1]))
+        for r in range(first_data_row, last_data_row + 1):
+            val = ws.cell(row=r, column=c).value
+            if val not in (None, ""):
+                longest = max(longest, len(str(val)))
         ws.column_dimensions[letter].width = max(8, longest + 2)
 
     buf = io.BytesIO()

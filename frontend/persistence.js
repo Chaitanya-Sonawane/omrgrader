@@ -320,6 +320,57 @@ function downloadUpdatedExcel(){
 let studentIndex = [];   // [{id, name, row(ref to students entry)}]
 let idColumn = null, nameColumn = null;
 
+// Fixed NMMS निकालपत्रक roster (roll no. + Marathi name), mirroring the
+// backend template exactly. Since the master-Excel upload was removed, this is
+// the default student database the smart search runs against so teachers can
+// still search a student by ID/roll or name (letter-by-letter, English or
+// मराठी) without uploading anything.
+const NMMS_FIXED_ROSTER = [
+  "दिघे सात्विक प्रमोद",
+  "कुलकर्णी ओंकार अभिजित",
+  "साबळे रुद्र नानासाहेब",
+  "दिघे साई अरुण",
+  "नालकर आदित्य नरेंद्र",
+  "कडू कृष्णा विवेक",
+  "दिघे सार्थक विजय",
+  "मुसमाडे अथर्व रविंद्र",
+  "कडू समर्थ जयराम",
+  "सूर्यवंशी प्रसाद पोपट",
+  "सरोदे समर्थ मनोज",
+  "गागरे प्रणव कैलास",
+  "पवार मंथन अंकुश",
+  "अनाप मितेश नानासाहेब",
+  "अनाप कृष्णा रोहिदास",
+  "जोर्वेकर विराज श्रीकांत",
+  "शिंदे सार्थक नितीन",
+  "जोर्वेकर सार्थक श्रीधर",
+  "पठारे मयूर गणेश",
+  "अनाप प्रणव राजू",
+  "अनाप साईनाथ अशोक",
+  "काळे संकेत रविंद्र",
+  "प्रधान श्रेयस चंद्रकांत",
+  "उपाध्ये कृष्णा विजय",
+  "शिंदे निखील गोरक्षनाथ",
+  "अनाप चेतन सुरेश",
+  "पर्वत सार्थक संदीप",
+  "गायकवाड रुदांत संदीप",
+  "भोसले सुदर्शन सुनील",
+  "शेजवळ दर्शन मधुकर",
+  "गोफणे अनिकेत गोरक्ष",
+  "जोशी अथर्व सुनील",
+  "बलमे सिद्धार्थ सुखदेव",
+  "चितळकर प्रसाद लालचंद",
+  "सांगळे सुजय गोरक्षनाथ",
+];
+function buildFixedRosterIndex(){
+  studentIndex = NMMS_FIXED_ROSTER.map((name, i)=>{
+    const row = {"प. क्र.": i + 1, "विद्यार्थ्याचे नाव": name};
+    return {id: String(i + 1), name: name, row};
+  });
+  idColumn = "प. क्र.";
+  nameColumn = "विद्यार्थ्याचे नाव";
+}
+
 function detectColumn(cols, patterns){
   for(const p of patterns){
     const hit = cols.find(c => p.test(c));
@@ -331,7 +382,9 @@ function buildStudentIndex(){
   studentIndex = [];
   idColumn = nameColumn = null;
   const rows = (active && active.students) || [];
-  if(!rows.length){ return; }
+  // No uploaded master Excel for this session → use the fixed NMMS roster so
+  // the smart search always has the student list to match against.
+  if(!rows.length){ buildFixedRosterIndex(); return; }
   const cols = Object.keys(rows[0]).filter(c=> c !== "__row");
   idColumn = detectColumn(cols, [/roll\s*no|roll|student\s*id|^id$|id\b|आयडी|रोल|क्रमांक/i]) || cols[0];
   nameColumn = detectColumn(cols, [/student\s*name|name|नाव|विद्यार्थ/i]) || cols[1] || cols[0];
@@ -348,9 +401,27 @@ function buildStudentIndex(){
 function searchStudents(q){
   q = String(q || "").trim().toLowerCase();
   if(!q) return studentIndex.slice(0, 12);
-  return studentIndex.filter(s=>
-    s.id.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
-  ).slice(0, 25);
+  // Letter-by-letter search: keep any student whose id or name contains what
+  // has been typed so far, then rank results so that names/ids that START with
+  // the typed letters come first (a natural "type one letter at a time" feel),
+  // with the rest sorted alphabetically.
+  const matches = studentIndex.filter(s=>{
+    const id = s.id.toLowerCase(), name = s.name.toLowerCase();
+    return id.includes(q) || name.includes(q);
+  });
+  const rank = (s)=>{
+    const id = s.id.toLowerCase(), name = s.name.toLowerCase();
+    if(id.startsWith(q) || name.startsWith(q)) return 0;   // best: prefix match
+    // match at the start of any word in the name (e.g. surname/first name)
+    if(name.split(/\s+/).some(w=> w.startsWith(q))) return 1;
+    return 2;                                              // anywhere else
+  };
+  matches.sort((a, b)=>{
+    const ra = rank(a), rb = rank(b);
+    if(ra !== rb) return ra - rb;
+    return a.name.localeCompare(b.name, "mr");
+  });
+  return matches.slice(0, 25);
 }
 
 let selectedStudent = null;   // the student row chosen from the search
@@ -388,8 +459,23 @@ function pickStudent(s){
   const nameEl = document.getElementById("studentName");
   if(idEl) idEl.value = s.id;
   if(nameEl) nameEl.value = s.name;
+  // Remember the selected student on the session so it is restored on reopen.
+  if(active){ active.selectedStudentId = s.id; persistActive(); }
   // If a fresh score is already available, assign it right away.
   if(lastResult) assignMarks();
+}
+// Re-select the student that was active when the session was last used, so the
+// teacher reopens exactly where they left off.
+function restoreSelectedStudent(){
+  selectedStudent = null;
+  if(!active || !active.selectedStudentId) return;
+  const s = studentIndex.find(x=> x.id === String(active.selectedStudentId));
+  if(!s) return;
+  selectedStudent = s;
+  const idEl = document.getElementById("studentId");
+  const nameEl = document.getElementById("studentName");
+  if(idEl) idEl.value = s.id;
+  if(nameEl) nameEl.value = s.name;
 }
 
 // ===========================================================================
@@ -416,11 +502,17 @@ function assignMarks(){
   }
   // Optimistic: update UI/model instantly.
   writeMarkToWorkbook(selectedStudent.row, column, Number(value));
+  // One scan = full NMMS result: keep all four subject marks + एकूण total so
+  // they survive refresh/close and can auto-fill the निकालपत्रक Excel.
+  const subjects = lastResult.subjects || {};
+  const total = (lastResult.total != null) ? lastResult.total : value;
   const scan = {
     id: uid(),
     studentId: selectedStudent.id,
     studentName: selectedStudent.name,
     subject: column,
+    subjects: subjects,
+    total: total,
     marks: value,
     maxMarks: lastResult.max_marks,
     percentage: lastResult.percentage,
@@ -428,19 +520,39 @@ function assignMarks(){
     createdAt: nowIso(),
   };
   active.scans = active.scans || [];
+  // Replace any earlier scan for this student so the latest result wins.
+  active.scans = active.scans.filter(x=> String(x.studentId) !== String(scan.studentId));
   active.scans.push(scan);
   persistActive();
   cloudSaveScan(active.id, scan);            // incremental cloud write
   // Reset the search fields so the teacher can scan the next sheet immediately.
   selectedStudent = null;
   lastResult = null;
+  if(active) active.selectedStudentId = null;
   const idEl = document.getElementById("studentId");
   const nameEl = document.getElementById("studentName");
   if(idEl) idEl.value = "";
   if(nameEl) nameEl.value = "";
   const info = document.getElementById("assignInfo");
-  if(info){ info.textContent = `Saved ${value} to "${scan.studentName || scan.studentId}" (${column}).`; }
+  if(info){
+    const parts = Object.keys(subjects).map(k=> `${k} ${subjects[k]}`).join(" · ");
+    info.textContent = `Saved for "${scan.studentName || scan.studentId}" — ${parts ? parts + " · " : ""}एकूण ${total}.`;
+  }
+  renderSubjectPreview(subjects, total);
   renderExcelStatus();
+}
+// Show the four subject marks + एकूण total for the last scan in the scan panel.
+function renderSubjectPreview(subjects, total){
+  const el = document.getElementById("subjectPreview");
+  if(!el) return;
+  subjects = subjects || {};
+  const keys = Object.keys(subjects);
+  if(!keys.length){ el.innerHTML = ""; el.style.display = "none"; return; }
+  el.style.display = "grid";
+  el.innerHTML = keys.map(k=>
+    `<div class="subj-cell"><span class="subj-name">${esc(k)}</span><span class="subj-mark">${esc(subjects[k])}</span></div>`
+  ).join("") +
+    `<div class="subj-cell subj-total"><span class="subj-name">एकूण</span><span class="subj-mark">${esc(total)}</span></div>`;
 }
 
 // ===========================================================================
@@ -514,7 +626,8 @@ async function openSession(id){
   await setActiveIdLocal(id);
   rehydrateWorkbook();
   buildStudentIndex();
-  selectedStudent = null; lastResult = null;
+  lastResult = null;
+  restoreSelectedStudent();
   renderSidebar();
   renderExcelStatus();
   renderSubjectPicker();
@@ -595,6 +708,18 @@ OMR.onScored = function(result){
 };
 OMR.assignMarks = assignMarks;
 OMR.downloadUpdatedExcel = downloadUpdatedExcel;
+
+// Collected per-student results of the active session, shaped for the NMMS
+// निकालपत्रक Excel auto-fill endpoint (studentId + subjects{} + एकूण total).
+OMR.getSessionResults = function(){
+  const scans = (active && active.scans) || [];
+  return scans.map(s=> ({
+    studentId: s.studentId,
+    studentName: s.studentName,
+    subjects: s.subjects || {},
+    total: (s.total != null) ? s.total : s.marks,
+  }));
+};
 
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
 else boot();

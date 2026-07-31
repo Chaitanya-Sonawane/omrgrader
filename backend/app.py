@@ -28,7 +28,10 @@ from pydantic import BaseModel
 
 from omr_engine import scan_omr_sheet, BubbleResult
 from frame_quality import check_frame_quality, process_captured_image, reset_tracker
-from scoring import score_sheet, batch_dashboard, grade_for_percentage, StudentResult
+from scoring import (
+    score_sheet, batch_dashboard, grade_for_percentage, StudentResult,
+    subject_breakdown, NMMS_SUBJECT_RANGES,
+)
 from export import build_excel_report, build_pdf_report, build_nmms_result_template, NMMS_FILENAME
 
 app = FastAPI(title="OMR Scanner & Grader")
@@ -103,6 +106,8 @@ def _student_result_to_dict(r: StudentResult):
              "student_answer": q.student_answer, "status": q.status, "marks": q.marks}
             for q in r.question_results
         ],
+        # NMMS subject split (four subjects + एकूण) from this single scan.
+        **subject_breakdown(r),
     }
 
 
@@ -208,6 +213,13 @@ async def scan_and_score(
     out = _student_result_to_dict(student_result)
     out["quality"] = scan_result.quality
     out["warnings"] = scan_result.warnings
+    # Questions the engine is unsure about (low confidence / multiple marks /
+    # not detected) so the UI can prompt the teacher to double-check them.
+    out["flagged_questions"] = [
+        {"question": q, "reason": b.flag_reason}
+        for q, b in sorted(scan_result.answers.items())
+        if b.flagged
+    ]
     return out
 
 
@@ -267,16 +279,31 @@ def export_excel():
     )
 
 
-@app.get("/api/export/nmms-template")
-def export_nmms_template():
-    """Return the fixed NMMS weekly result sheet (heading + student list) as a
-    ready-to-fill .xlsx generated entirely on the backend."""
-    data = build_nmms_result_template()
+class NmmsFillIn(BaseModel):
+    # per-student scanned results: [{studentId, studentName, subjects{}, total}]
+    results: list[dict] = []
+
+
+def _nmms_streaming_response(data: bytes):
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={NMMS_FILENAME}"},
     )
+
+
+@app.get("/api/export/nmms-template")
+def export_nmms_template():
+    """Return the fixed NMMS weekly result sheet (heading + student list) as a
+    ready-to-fill .xlsx generated entirely on the backend (marks blank)."""
+    return _nmms_streaming_response(build_nmms_result_template())
+
+
+@app.post("/api/export/nmms-template")
+def export_nmms_template_filled(payload: NmmsFillIn):
+    """Return the NMMS निकालपत्रक with each matching student's four subject marks
+    + एकूण auto-filled from the scanned results sent by the client."""
+    return _nmms_streaming_response(build_nmms_result_template(payload.results))
 
 
 @app.get("/api/export/pdf")

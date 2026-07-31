@@ -94,6 +94,41 @@ def score_sheet(scan_answers: dict, answer_key: dict,
     return result
 
 
+# ---------------------------------------------------------------------------
+# NMMS subject split. A single scanned sheet holds 40 answers; these fixed
+# question ranges group them into the four NMMS निकालपत्रक subjects. एकूण
+# (total) is the sum of the four subject marks. Ranges are inclusive and
+# 1-based; adjust here if the real sheet layout differs.
+# ---------------------------------------------------------------------------
+NMMS_SUBJECT_RANGES = {
+    "बुद्धिमत्ता": (1, 10),
+    "विज्ञान": (11, 20),
+    "स.शास्त्र": (21, 30),
+    "गणित": (31, 40),
+}
+
+
+def subject_breakdown(result: StudentResult, ranges: dict | None = None) -> dict:
+    """Split a scored sheet into per-subject marks + एकूण total.
+
+    Counts a question toward its subject only when it was answered correctly,
+    using the same question numbering as `question_results`. Returns
+    ``{"subjects": {name: marks}, "total": marks}`` so the four cells + एकूण
+    can be filled straight into the निकालपत्रक Excel from a single scan.
+    """
+    ranges = ranges or NMMS_SUBJECT_RANGES
+    correct_by_q = {
+        qr.question for qr in result.question_results if qr.status == "correct"
+    }
+    subjects = {}
+    total = 0
+    for name, (lo, hi) in ranges.items():
+        marks = sum(1 for q in range(lo, hi + 1) if q in correct_by_q)
+        subjects[name] = marks
+        total += marks
+    return {"subjects": subjects, "total": total}
+
+
 def grade_for_percentage(pct: float) -> str:
     if pct >= 90: return "A+"
     if pct >= 80: return "A"

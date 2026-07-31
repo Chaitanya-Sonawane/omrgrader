@@ -215,6 +215,10 @@ def score_all_bubbles(gray_roi, grid, n_rows, n_cols):
 
 FILL_THRESHOLD = 42.0       # confidence % above which a bubble counts as marked
 AMBIGUOUS_MARGIN = 12.0     # if 2nd place is within this margin of 1st -> multi-mark flag
+# When exactly one option is marked but the runner-up option's fill score is
+# within this margin of the chosen one, the answer is kept but flagged as a
+# "low confidence" read so the teacher can double-check that single question.
+LOW_CONFIDENCE_MARGIN = 15.0
 
 
 def resolve_answers(confidences, n_rows=20, n_cols=8, block_size=4):
@@ -239,7 +243,18 @@ def resolve_answers(confidences, n_rows=20, n_cols=8, block_size=4):
             if len(marked) == 0:
                 results[qnum] = BubbleResult(qnum, None, False, [], opt_scores, False, "blank")
             elif len(marked) == 1:
-                results[qnum] = BubbleResult(qnum, marked[0], False, [], opt_scores)
+                chosen = marked[0]
+                # runner-up (best non-chosen option) to gauge read confidence
+                runner = max(
+                    (c for o, c in opt_scores.items() if o != chosen), default=0.0
+                )
+                if opt_scores[chosen] - runner < LOW_CONFIDENCE_MARGIN:
+                    # keep the answer but ask the teacher to double-check it
+                    results[qnum] = BubbleResult(
+                        qnum, chosen, False, [], opt_scores, True, "low confidence"
+                    )
+                else:
+                    results[qnum] = BubbleResult(qnum, chosen, False, [], opt_scores)
             else:
                 top, second = marked[0], marked[1]
                 if opt_scores[top] - opt_scores[second] < AMBIGUOUS_MARGIN:
