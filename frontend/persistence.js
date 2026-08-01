@@ -633,6 +633,16 @@ async function openSession(id){
   renderSubjectPicker();
   const title = document.getElementById("activeSessionName");
   if(title) title.textContent = active.name;
+  // Clear this session's scan-panel outputs so a new/opened session starts
+  // clean (assignInfo + the four-subject preview belong to this layer).
+  const info = document.getElementById("assignInfo");
+  if(info) info.textContent = "";
+  renderSubjectPreview(null, null);
+  // Let index.html reset the Scan-result and Results-table screens that it
+  // owns, so switching/creating a session re-renders every screen fresh.
+  if(typeof OMR.onSessionChange === "function"){
+    try{ OMR.onSessionChange(active); }catch(_){}
+  }
   closeSidebar();
 }
 function openSidebar(){ const s = document.getElementById("sessionSidebar"); if(s) s.classList.add("open"); const b=document.getElementById("sidebarBackdrop"); if(b) b.classList.add("show"); }

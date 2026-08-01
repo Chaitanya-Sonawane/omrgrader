@@ -1422,6 +1422,32 @@ async function loadResults(){
   });
 }
 
+// When the teacher creates/switches a session, wipe every screen this file
+// owns so nothing from the previous session lingers: the Scan panel (chosen
+// image, scored result, status) and the Results panel (dashboard + table).
+// persistence.js already clears its own bits (student fields, subject preview,
+// assignInfo) and calls this hook.
+function resetScreensForSession(){
+  // --- Scan screen ---
+  selectedFile = null;
+  lastScanResult = null;
+  const preview = document.getElementById("preview");
+  if(preview){ preview.removeAttribute("src"); preview.style.display = "none"; }
+  const scanResult = document.getElementById("scanResult");
+  if(scanResult) scanResult.innerHTML = "";
+  const scanStatus = document.getElementById("scanStatus");
+  if(scanStatus){ scanStatus.textContent = ""; scanStatus.className = ""; }
+  // --- Results screen ---
+  const tbody = document.querySelector("#resultsTable tbody");
+  if(tbody) tbody.innerHTML = "";
+  const dashStats = document.getElementById("dashStats");
+  if(dashStats) dashStats.innerHTML = "";
+}
+try{
+  window.OMRSession = window.OMRSession || {};
+  window.OMRSession.onSessionChange = resetScreensForSession;
+}catch(_){}
+
 document.getElementById("clearResults").onclick = async ()=>{
   if(!confirm("Clear all scanned results?")) return;
   await fetch(await apiUrl("/api/results"), withApiHeaders({method:"DELETE"}));
