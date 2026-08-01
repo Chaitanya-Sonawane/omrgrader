@@ -3,36 +3,41 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover" />
-<meta name="theme-color" content="#4f46e5" />
+<meta name="theme-color" content="#6d5efc" />
 <title>OMR Grader</title>
 <style>
   :root{
-    --bg:#eef1f8;
-    --bg-grad-1:#4f46e5;
-    --bg-grad-2:#7c3aed;
-    --ink:#1e293b;
-    --muted:#64748b;
-    --line:#e2e8f0;
-    --brand:#4f46e5;
-    --brand-dark:#4338ca;
+    --bg:#eef0fb;
+    --bg-grad-1:#6d5efc;
+    --bg-grad-2:#a855f7;
+    --ink:#0f172a;
+    --muted:#6b7280;
+    --line:#e6e8f2;
+    --brand:#6d5efc;
+    --brand-dark:#4f46e5;
     --card:#ffffff;
-    --green:#16a34a;
-    --green-bg:#dcfce7;
-    --red:#dc2626;
-    --red-bg:#fee2e2;
+    --green:#059669;
+    --green-bg:#d1fae5;
+    --red:#e11d48;
+    --red-bg:#ffe4e6;
     --amber:#d97706;
     --amber-bg:#fef3c7;
-    --slate-bg:#f1f5f9;
-    --radius:16px;
-    --shadow:0 4px 20px rgba(30,41,59,.08);
-    --shadow-lg:0 10px 40px rgba(79,70,229,.18);
+    --slate-bg:#f3f4fb;
+    --radius:20px;
+    --shadow:0 6px 24px rgba(15,23,42,.07);
+    --shadow-lg:0 14px 44px rgba(109,94,252,.22);
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
     --safe-b:env(safe-area-inset-bottom, 0px);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html{ -webkit-text-size-adjust:100%; }
   body{
-    margin:0; background:var(--bg); color:var(--ink);
+    margin:0; color:var(--ink);
+    background:var(--bg);
+    background-image:
+      radial-gradient(1100px 460px at 8% -8%, rgba(109,94,252,.16), transparent 60%),
+      radial-gradient(900px 420px at 108% 4%, rgba(168,85,247,.14), transparent 58%);
+    background-attachment:fixed;
     font-family:var(--sans); font-size:16px; line-height:1.5;
     padding-bottom:calc(84px + var(--safe-b));
   }
@@ -41,10 +46,11 @@
   /* ---------- header ---------- */
   header{
     background:linear-gradient(135deg,var(--bg-grad-1),var(--bg-grad-2));
-    color:#fff; padding:18px 20px calc(18px);
-    padding-top:calc(18px + env(safe-area-inset-top,0px));
+    color:#fff; padding:16px 20px 18px;
+    padding-top:calc(16px + env(safe-area-inset-top,0px));
     display:flex; align-items:center; justify-content:space-between; gap:10px;
     box-shadow:var(--shadow-lg); position:sticky; top:0; z-index:40;
+    border-bottom-left-radius:22px; border-bottom-right-radius:22px;
   }
   header h1{ font-size:20px; font-weight:800; margin:0; letter-spacing:-.4px; display:flex; align-items:center; gap:8px; }
   header h1 .logo{ font-size:22px; }
@@ -88,7 +94,7 @@
   .panel.active{ display:block; }
   @keyframes fadeUp{ from{ opacity:0; transform:translateY(12px);} to{ opacity:1; transform:none;} }
 
-  .card{ background:var(--card); border-radius:var(--radius); padding:18px; box-shadow:var(--shadow); margin-bottom:16px; }
+  .card{ background:var(--card); border-radius:var(--radius); padding:20px; box-shadow:var(--shadow); margin-bottom:16px; border:1px solid rgba(230,232,242,.7); }
   h2{ font-size:19px; font-weight:800; margin:0 0 4px; letter-spacing:-.3px; }
   .sub{ font-size:13.5px; color:var(--muted); margin:0 0 16px; }
 
@@ -280,12 +286,39 @@
   .ac-name{ font-size:14px; }
   .ac-empty{ padding:10px 14px; color:var(--muted); font-size:13px; }
   #assignInfo{ font-size:12.5px; color:var(--brand); font-weight:600; margin-top:8px; display:block; min-height:16px; }
-  .subject-preview{ display:grid; grid-template-columns:repeat(auto-fit,minmax(90px,1fr)); gap:8px; margin-top:10px; }
-  .subject-preview .subj-cell{ background:#f8fafc; border:1.5px solid var(--line); border-radius:12px; padding:8px 10px; text-align:center; }
-  .subject-preview .subj-name{ display:block; font-size:11.5px; color:var(--muted); }
-  .subject-preview .subj-mark{ display:block; font-size:20px; font-weight:800; color:var(--ink); }
-  .subject-preview .subj-total{ background:var(--brand); border-color:var(--brand); }
-  .subject-preview .subj-total .subj-name, .subject-preview .subj-total .subj-mark{ color:#fff; }
+
+  /* ---------- subject marks preview (modular card) ---------- */
+  .subject-preview{ display:block; margin-top:14px; }
+  .marks-card{
+    background:linear-gradient(180deg,#ffffff,#fbfaff);
+    border:1px solid var(--line); border-radius:20px; padding:16px 16px 18px;
+    box-shadow:var(--shadow); animation:pop .4s ease both; overflow:hidden;
+  }
+  .marks-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
+  .marks-head .mh-title{ font-size:14px; font-weight:800; color:var(--ink); display:flex; align-items:center; gap:8px; letter-spacing:-.2px; }
+  .marks-head .mh-title .ico{ font-size:17px; }
+  .marks-total-badge{
+    display:flex; align-items:baseline; gap:4px; font-weight:700; color:#fff;
+    background:linear-gradient(135deg,var(--bg-grad-1),var(--bg-grad-2));
+    padding:7px 14px; border-radius:999px; box-shadow:0 6px 16px rgba(79,70,229,.28);
+  }
+  .marks-total-badge .lbl{ font-size:11px; opacity:.85; font-weight:600; }
+  .marks-total-badge b{ font-size:19px; line-height:1; font-weight:800; }
+  .marks-total-badge small{ font-size:12px; opacity:.8; font-weight:600; }
+  .marks-list{ display:grid; grid-template-columns:1fr; gap:11px; }
+  .marks-row{ display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:11px; }
+  .marks-row .mk-left{ display:flex; align-items:center; gap:9px; min-width:112px; }
+  .marks-row .mk-dot{ width:11px; height:11px; border-radius:4px; background:var(--c,#94a3b8); flex-shrink:0; box-shadow:0 0 0 3px color-mix(in srgb, var(--c,#94a3b8) 18%, transparent); }
+  .marks-row .mk-name{ font-size:13.5px; font-weight:700; color:var(--ink); white-space:nowrap; }
+  .marks-row .mk-bar{ height:10px; background:var(--slate-bg); border-radius:999px; overflow:hidden; }
+  .marks-row .mk-bar > i{ display:block; height:100%; width:0; border-radius:999px; background:var(--c,#94a3b8); transition:width .6s cubic-bezier(.22,1,.36,1); }
+  .marks-row .mk-val{ font-size:15px; font-weight:800; color:var(--ink); white-space:nowrap; min-width:44px; text-align:right; }
+  .marks-row .mk-val small{ font-size:11.5px; font-weight:600; color:var(--muted); }
+  @media(max-width:460px){
+    .marks-row{ grid-template-columns:auto 1fr auto; }
+    .marks-row .mk-left{ min-width:96px; }
+    .marks-row .mk-name{ font-size:12.5px; }
+  }
   .review-flags{ background:#fff7ed; border:1.5px solid #fdba74; color:#9a3412; border-radius:14px; padding:12px 14px; margin-bottom:12px; }
   .review-flags b{ display:block; margin-bottom:8px; font-size:14px; }
   .flag-chips{ display:flex; flex-wrap:wrap; gap:6px; }
@@ -306,7 +339,6 @@
   </div>
   <div class="sidebar-foot">
     <button class="primary" id="newSessionBtn">➕ New session</button>
-    <span class="hint">Tap a session to reopen it exactly where you left off. Tap ✏️ to rename.</span>
   </div>
 </aside>
 
@@ -331,7 +363,6 @@
   <section class="panel active" id="panel-key">
     <div class="card">
       <h2>Answer key</h2>
-      <p class="sub">40 questions, options 1&ndash;4. Tap the correct option for each (tap again to clear), or paste in bulk.</p>
 
       <div class="row">
         <div class="field">
@@ -366,7 +397,6 @@
   <section class="panel" id="panel-scan">
     <div class="card">
       <h2>Scan an answer sheet</h2>
-      <p class="sub">Capture with your camera or upload a photo. Works with tilted, slightly shadowed phone photos.</p>
 
       <div class="capture-modes">
         <div class="mode-card selected" id="modeUpload">
@@ -456,7 +486,6 @@
   <section class="panel" id="panel-results">
     <div class="card">
       <h2>Class results</h2>
-      <p class="sub">Every sheet scored this session.</p>
       <div class="dash-stats" id="dashStats"></div>
       <div class="export-row">
         <button class="primary" onclick="openExport('nmms-template')">📗 NMMS निकालपत्रक Excel</button>
@@ -464,7 +493,6 @@
         <button class="ghost" onclick="openExport('pdf')">⬇️ Class PDF</button>
         <button class="ghost" id="clearResults">🗑️ Clear all</button>
       </div>
-      <span class="hint">The <b>NMMS निकालपत्रक Excel</b> is generated on the server as <b>NMMS_Result_Test_4.xlsx</b> — each scanned student's बुद्धिमत्ता / विज्ञान / स.शास्त्र / गणित marks and the एकूण total are auto-filled next to their name; संवर्ग stays blank to fill in later.</span>
       <div class="table-wrap">
         <table id="resultsTable">
           <thead><tr><th>ID</th><th>Name</th><th>Correct</th><th>Wrong</th><th>Blank</th><th>Marks</th><th>%</th><th>Grade</th></tr></thead>
@@ -1125,7 +1153,6 @@ function renderScanResult(data, statusEl){
     <div class="subjects">${subjectCards}</div>
     <div class="card">
       <h2 style="font-size:16px; margin:0 0 4px;">Question-by-question result</h2>
-      <p class="sub" style="margin-bottom:6px;">All 40 questions with correct answer, marked answer and status.</p>
       <div class="qfull">${detailTables}</div>
     </div>
     <div class="card">

@@ -541,18 +541,38 @@ function assignMarks(){
   renderSubjectPreview(subjects, total);
   renderExcelStatus();
 }
-// Show the four subject marks + एकूण total for the last scan in the scan panel.
+// Per-subject max marks + accent colours for the modular marks card.
+const SUBJECT_MAX = 10;            // each NMMS subject is out of 10 (Q ranges of 10)
+const SUBJECT_COLORS = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6"];
+
+// Show the four subject marks + एकूण total for the last scan as a modular,
+// modern card: one row per subject with a coloured progress bar, plus a
+// prominent एकूण total badge.
 function renderSubjectPreview(subjects, total){
   const el = document.getElementById("subjectPreview");
   if(!el) return;
   subjects = subjects || {};
   const keys = Object.keys(subjects);
   if(!keys.length){ el.innerHTML = ""; el.style.display = "none"; return; }
-  el.style.display = "grid";
-  el.innerHTML = keys.map(k=>
-    `<div class="subj-cell"><span class="subj-name">${esc(k)}</span><span class="subj-mark">${esc(subjects[k])}</span></div>`
-  ).join("") +
-    `<div class="subj-cell subj-total"><span class="subj-name">एकूण</span><span class="subj-mark">${esc(total)}</span></div>`;
+  const maxTotal = keys.length * SUBJECT_MAX;
+  const rows = keys.map((k, i)=>{
+    const val = Number(subjects[k]) || 0;
+    const pct = Math.max(0, Math.min(100, (val / SUBJECT_MAX) * 100));
+    const c = SUBJECT_COLORS[i % SUBJECT_COLORS.length];
+    return `<div class="marks-row" style="--c:${c}">
+      <span class="mk-left"><span class="mk-dot"></span><span class="mk-name">${esc(k)}</span></span>
+      <span class="mk-bar"><i style="width:${pct}%"></i></span>
+      <span class="mk-val">${esc(val)}<small>/${SUBJECT_MAX}</small></span>
+    </div>`;
+  }).join("");
+  el.style.display = "block";
+  el.innerHTML = `<div class="marks-card">
+    <div class="marks-head">
+      <span class="mh-title"><span class="ico">📊</span> विषयनिहाय गुण</span>
+      <span class="marks-total-badge"><span class="lbl">एकूण</span><b>${esc(total)}</b><small>/${maxTotal}</small></span>
+    </div>
+    <div class="marks-list">${rows}</div>
+  </div>`;
 }
 
 // ===========================================================================
