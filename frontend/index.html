@@ -137,7 +137,6 @@
     border-radius:var(--radius); width:100%; background:#fff; transition:border-color .15s, box-shadow .15s; color:var(--ink);
   }
   .field input:focus, .field textarea:focus{ outline:none; border-color:var(--brand); box-shadow:0 0 0 3px rgba(52,87,213,.15); }
-  textarea#bulkKey{ width:100%; height:84px; resize:vertical; }
 
   /* ---------- buttons ---------- */
   button.primary{
@@ -381,6 +380,58 @@
   .review-flags b{ display:block; margin-bottom:8px; font-family:var(--display); font-size:14px; font-weight:600; }
   .flag-chips{ display:flex; flex-wrap:wrap; gap:6px; }
   .flag-chip{ background:#F0E2C4; border:1px solid #E0C48A; color:#8A5A16; border-radius:6px; padding:3px 10px; font-size:12px; font-weight:600; }
+
+  /* ============================================================
+     PHONE RESPONSIVENESS
+     Tuned so the whole app is comfortable and one-handed on a
+     phone held in portrait during in-classroom camera capture.
+     ============================================================ */
+
+  /* Tablets / small laptops down to large phones */
+  @media(max-width:600px){
+    main{ padding:14px 12px 20px; }
+    .card{ padding:16px 14px; border-radius:var(--radius); }
+    h2{ font-size:17px; }
+    header{ padding:12px 14px 13px; padding-top:calc(12px + env(safe-area-inset-top,0px)); }
+    header h1{ font-size:17px; }
+    header h1 .logo{ font-size:18px; }
+    /* The answer sheet is the tightest layout: one question per row so
+       the label + A/B/C/D bubbles always fit without horizontal overflow. */
+    .grid-key{ grid-template-columns:1fr; grid-template-rows:none; grid-auto-flow:row; gap:8px; }
+    .key-cell{ justify-content:space-between; }
+    .opt-row{ justify-content:flex-end; }
+  }
+
+  /* Typical phones */
+  @media(max-width:430px){
+    body{ font-size:15.5px; }
+    main{ padding:12px 10px 18px; }
+    .card{ padding:14px 12px; }
+    /* Slightly larger, evenly spread bubbles now that each row is full-width */
+    .opt-row{ gap:10px; justify-content:space-between; flex:1; }
+    .opt-btn{ width:38px; height:38px; font-size:14px; }
+    .key-cell label{ min-width:26px; }
+    /* Stack the compact scan result so numbers never squeeze/overflow */
+    .result-compact{ padding:14px; gap:12px; }
+    .result-compact .rc-nums{ gap:12px; width:100%; justify-content:space-between; }
+    .result-compact .rc-score b{ font-size:30px; }
+    .score-hero .big{ font-size:38px; }
+    .score-hero .big small{ font-size:20px; }
+    /* Keep primary/secondary key actions full width in a clean stack */
+    .key-actions .primary, .key-actions .ghost{ flex:1 1 100%; }
+    .export-row button{ flex:1 1 100%; }
+    /* Give inputs comfortable touch targets */
+    .field input, .field textarea{ padding:13px 14px; }
+  }
+
+  /* Very small phones */
+  @media(max-width:360px){
+    .opt-btn{ width:34px; height:34px; }
+    .capture-modes{ gap:8px; }
+    .mode-card{ padding:13px 8px; }
+    .result-compact .grade-badge{ width:46px; height:46px; font-size:18px; }
+    .tab-btn{ font-size:12.5px; }
+  }
 </style>
 </head>
 <body>
@@ -433,14 +484,6 @@
         </div>
       </div>
 
-      <div class="field" style="margin-bottom:16px;">
-        <label>Bulk paste (format: "1 2, 2 4, 3 1 ..." or one "Q Answer" per line)</label>
-        <textarea id="bulkKey" placeholder="1 2
-2 4
-3 1
-..."></textarea>
-        <button class="ghost" id="applyBulk" style="margin-top:8px;">Apply bulk entry</button>
-      </div>
 
       <div class="grid-key" id="keyGrid"></div>
       <div class="key-actions">
@@ -833,22 +876,25 @@ function collectKey(){
   return {answers, marks_per_correct, negative_marking};
 }
 function saveKeyLocal(payload){
-  try{ localStorage.setItem(KEY_STORE, JSON.stringify(payload)); }catch(e){}
-  // Store the key inside the active session too, so every session keeps its
-  // own answer key and a brand-new session starts blank.
+  // NOTE: intentionally NOT written to the global KEY_STORE anymore. Each
+  // checking session owns its own answer key; persisting into the shared
+  // localStorage key made brand-new sessions inherit the last saved key (see
+  // loadKeyForSession's legacy migration), so different sessions ended up
+  // sharing the same answers. The key now lives ONLY inside the active session.
   try{ if(window.OMRSession && OMRSession.saveAnswerKey) OMRSession.saveAnswerKey(payload); }catch(_){}
 }
 // Wipe every selected option + inputs so the key grid is completely empty.
 function clearKeyGrid(){
   keyGrid.querySelectorAll(".opt-btn.selected").forEach(b=> b.classList.remove("selected"));
-  const bulk = document.getElementById("bulkKey");
-  if(bulk) bulk.value = "";
 }
 // Paint a saved key payload onto the grid (used when opening a session).
 function applyKeyPayload(payload){
   clearKeyGrid();
   if(!payload || !payload.answers){
     document.getElementById("keyStatus").textContent = "";
+    // Blank session: push an empty key to the backend so a scan never scores
+    // against a previous session's answers still held on the server.
+    syncKeyToServer({answers:{}, marks_per_correct:1, negative_marking:0}).catch(()=>{});
     return;
   }
   Object.keys(payload.answers).forEach(q=> setKeyValue(parseInt(q), parseInt(payload.answers[q])));
@@ -886,17 +932,6 @@ async function syncKeyToServer(payload){
   return parseJSON(res);
 }
 
-document.getElementById("applyBulk").onclick = ()=>{
-  const text = document.getElementById("bulkKey").value;
-  const tokens = text.split(/[\n,]/).map(t=>t.trim()).filter(Boolean);
-  tokens.forEach(tok=>{
-    const parts = tok.split(/\s+/);
-    if(parts.length>=2){
-      const q = parseInt(parts[0]), a = parseInt(parts[1]);
-      setKeyValue(q, a);
-    }
-  });
-};
 
 document.getElementById("saveKey").onclick = async ()=>{
   const answers = {};
@@ -929,7 +964,7 @@ document.getElementById("newKey").onclick = ()=>{
   // Persist the cleared key into this session so it truly starts blank.
   try{ if(window.OMRSession && OMRSession.saveAnswerKey) OMRSession.saveAnswerKey(null); }catch(_){}
   document.getElementById("keyStatus").textContent =
-    "New answer key started \u2014 tap the correct options (or paste in bulk), then \"Save answer key\".";
+    "New answer key started \u2014 tap the correct options, then \"Save answer key\".";
 };
 
 // The active session's saved key is loaded via the onSessionChange hook once
