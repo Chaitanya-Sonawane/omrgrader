@@ -30,6 +30,30 @@ const nowIso = () => new Date().toISOString();
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 
+// RFC-4122 v4 unique id (used for session ids and answer-key ids). Falls back
+// to a manual generator if crypto.randomUUID is unavailable so every session
+// and every answer key is guaranteed its own globally-unique identifier.
+const uuid = () => (window.crypto && typeof window.crypto.randomUUID === "function")
+  ? window.crypto.randomUUID()
+  : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c=>{
+      const r = Math.random()*16|0, v = c==="x" ? r : (r&0x3|0x8); return v.toString(16);
+    });
+const genId = (prefix) => prefix + "_" + uuid();
+
+// Deep clone that breaks every shared object reference between sessions so no
+// two sessions can ever mutate the same nested array/object.
+function deepClone(o){
+  if(o == null) return o;
+  try{ if(typeof structuredClone === "function") return structuredClone(o); }catch(_){/* fall through */}
+  try{ return JSON.parse(JSON.stringify(o)); }catch(__){ return o; }
+}
+
+// A brand-new, blank answer key that owns its own unique identifier.
+function newAnswerKey(){
+  return {keyId: genId("key"), answers: {}, marks_per_correct: 1, negative_marking: 0,
+          createdAt: nowIso(), updatedAt: nowIso()};
+}
+
 // ---------------------------------------------------------------------------
 // IndexedDB — durable local cache for the optimistic-first store. Sessions and
 // their (potentially large) Excel workbooks live here so the app is fully
@@ -161,6 +185,8 @@ async function cloudSaveSession(sess){
       students: sess.students || [],
       excelMeta: sess.excelMeta || null,
       subjectColumns: sess.subjectColumns || [],
+      answerKey: sess.answerKey || null,
+      selectedStudentId: sess.selectedStudentId != null ? sess.selectedStudentId : null,
     }, {merge:true});
     setSync("saved");
   }catch(err){
@@ -207,6 +233,85 @@ let workbook = null;      // live SheetJS workbook of the active session's Excel
 
 function findSession(id){ return sessions.find(s=> s.id === id) || null; }
 function sortSessions(){ sessions.sort((a,b)=> (b.updatedAt||"").localeCompare(a.updatedAt||"")); }
+
+// Factory for a completely fresh, isolated session: brand-new unique id, a
+// newly initialized answer key with its own unique id, and no data inherited
+// from any other session.
+function makeSession(name){
+  return {
+    id: genId("s"),
+    name: (name || "Untitled session").trim() || "Untitled session",
+    createdAt: nowIso(), updatedAt: nowIso(),
+    students: [], subjectColumns: [], scans: [],
+    excelB64: null, excelName: null, sheetName: null, excelMeta: null,
+    selectedStudentId: null,
+    answerKey: newAnswerKey(),
+  };
+}
+// Guarantee the given session's id does not collide with any other session.
+function ensureUniqueSessionId(s){
+  const taken = new Set(sessions.filter(x=> x !== s).map(x=> x.id));
+  while(!s.id || taken.has(s.id)) s.id = genId("s");
+}
+
+// Validate & repair a single (possibly corrupted / legacy) session object,
+// returning an isolated deep copy with every field present and well-typed.
+function normalizeSession(raw){
+  const s = deepClone(raw) || {};
+  if(!s.id || typeof s.id !== "string") s.id = genId("s");
+  s.name = (typeof s.name === "string" && s.name.trim()) ? s.name : "Untitled session";
+  s.createdAt = s.createdAt || nowIso();
+  s.updatedAt = s.updatedAt || s.createdAt;
+  s.students = Array.isArray(s.students) ? s.students : [];
+  s.subjectColumns = Array.isArray(s.subjectColumns) ? s.subjectColumns : [];
+  // Drop corrupted / orphan scans (must be objects carrying a student id) and
+  // guarantee every surviving scan owns an id.
+  s.scans = (Array.isArray(s.scans) ? s.scans : [])
+    .filter(x=> x && typeof x === "object" && x.studentId != null && String(x.studentId) !== "");
+  s.scans.forEach(x=>{ if(!x.id) x.id = uid(); });
+  // Answer key: keep null when absent, otherwise repair it and ensure a keyId.
+  if(s.answerKey && typeof s.answerKey === "object"){
+    if(!s.answerKey.keyId) s.answerKey.keyId = genId("key");
+    if(!s.answerKey.answers || typeof s.answerKey.answers !== "object") s.answerKey.answers = {};
+  }else{
+    s.answerKey = null;
+  }
+  return s;
+}
+
+// Validate & repair the full session list: dedupe session ids (newest wins),
+// dedupe answer-key ids across sessions, and break all shared references.
+function validateAndRepairSessions(list){
+  const byId = {};
+  (list || []).forEach(raw=>{
+    const s = normalizeSession(raw);
+    const prev = byId[s.id];
+    if(!prev || (s.updatedAt||"") >= (prev.updatedAt||"")) byId[s.id] = s;
+  });
+  const keyIds = new Set();
+  return Object.values(byId).map(s=>{
+    if(s.answerKey && s.answerKey.keyId){
+      if(keyIds.has(s.answerKey.keyId)) s.answerKey.keyId = genId("key"); // duplicate key id → fresh one
+      keyIds.add(s.answerKey.keyId);
+    }
+    return s;
+  });
+}
+
+// Wipe every piece of transient, non-session in-memory state so switching or
+// creating a session can never leak the previous session's workbook, search
+// index, selected student or last scan into the newly active session.
+function resetTransientState(){
+  workbook = null;
+  studentIndex = [];
+  idColumn = nameColumn = null;
+  selectedStudent = null;
+  lastResult = null;
+  const idEl = document.getElementById("studentId");
+  const nameEl = document.getElementById("studentName");
+  if(idEl) idEl.value = "";
+  if(nameEl) nameEl.value = "";
+}
 
 async function persistActive(){
   if(!active) return;
@@ -619,12 +724,12 @@ async function newSession(){
   const name = prompt("Name this new scan session (e.g. \"Mid Term Maths\", \"Unit Test Batch A\"):", "");
   if(name === null) return;                          // cancelled
   if(!confirm("Create a new scan session? Your current session stays saved and can be reopened anytime.")) return;
-  const sess = {
-    id: uid(), name: (name || "Untitled session").trim(),
-    createdAt: nowIso(), updatedAt: nowIso(),
-    students: [], subjectColumns: [], scans: [],
-  };
+  // A fully fresh, isolated workspace: unique session id + its own new answer
+  // key, nothing inherited from the currently active session.
+  const sess = makeSession(name);
+  ensureUniqueSessionId(sess);
   sessions.unshift(sess);
+  await saveSessionLocal(sess);                       // persist immediately
   await openSession(sess.id);
 }
 async function renameSession(id){
@@ -641,8 +746,12 @@ async function renameSession(id){
 async function openSession(id){
   const s = findSession(id);
   if(!s) return;
+  // Drop all transient state from the previously active session first, then
+  // adopt the new one so nothing can leak across the switch.
+  resetTransientState();
   active = s;
   active.scans = active.scans || [];
+  if(!active.answerKey) active.answerKey = newAnswerKey(); // self-heal legacy sessions
   await setActiveIdLocal(id);
   rehydrateWorkbook();
   buildStudentIndex();
@@ -675,14 +784,18 @@ async function boot(){
   initFirebase();
   _syncEl = document.getElementById("syncState");
 
-  // Merge local + cloud sessions (local wins on id clash for freshest edits).
+  // Merge local + cloud sessions (local wins on id clash for freshest edits),
+  // then validate & repair every session (dedupe ids, dedupe answer-key ids,
+  // drop orphan scans, break shared references) so each is fully isolated.
   const local = await loadAllSessionsLocal();
   const cloud = await cloudLoadSessions();
   const byId = {};
-  cloud.forEach(s=> byId[s.id] = s);
-  local.forEach(s=> byId[s.id] = s);      // local overrides cloud
-  sessions = Object.values(byId);
+  cloud.forEach(s=> { if(s && s.id) byId[s.id] = s; });
+  local.forEach(s=> { if(s && s.id) byId[s.id] = s; });   // local overrides cloud
+  sessions = validateAndRepairSessions(Object.values(byId));
   sortSessions();
+  // Persist any repairs made during validation so they are durable.
+  for(const s of sessions){ try{ await saveSessionLocal(s); }catch(_){} }
 
   // Auto-restore the last active session, or create a first one.
   let activeId = await getActiveIdLocal();
@@ -690,8 +803,8 @@ async function boot(){
   if(activeId){
     await openSession(activeId);
   }else{
-    const sess = {id: uid(), name: "Session 1", createdAt: nowIso(), updatedAt: nowIso(),
-      students: [], subjectColumns: [], scans: []};
+    const sess = makeSession("Session 1");
+    ensureUniqueSessionId(sess);
     sessions.unshift(sess);
     await saveSessionLocal(sess);
     await openSession(sess.id);
@@ -738,6 +851,39 @@ OMR.onScored = function(result){
 };
 OMR.assignMarks = assignMarks;
 OMR.downloadUpdatedExcel = downloadUpdatedExcel;
+
+// ---------------------------------------------------------------------------
+// Per-session answer key. Each checking session keeps its own answer key so a
+// brand-new session starts blank, while reopening a session restores exactly
+// the key that was saved inside it.
+// ---------------------------------------------------------------------------
+OMR.saveAnswerKey = function(payload){
+  if(!active) return;
+  if(payload == null){
+    // "New answer key": start a brand-new blank key with its own unique id so
+    // it is isolated from any previously saved key in this or other sessions.
+    active.answerKey = newAnswerKey();
+  }else{
+    // Edit in place: keep this session's stable key id, replace its contents
+    // with an isolated deep copy so no shared reference leaks in.
+    const prev = active.answerKey || {};
+    active.answerKey = {
+      keyId: prev.keyId || genId("key"),
+      answers: deepClone(payload.answers || {}),
+      marks_per_correct: payload.marks_per_correct != null ? payload.marks_per_correct
+                        : (prev.marks_per_correct != null ? prev.marks_per_correct : 1),
+      negative_marking: payload.negative_marking != null ? payload.negative_marking
+                        : (prev.negative_marking != null ? prev.negative_marking : 0),
+      createdAt: prev.createdAt || nowIso(),
+      updatedAt: nowIso(),
+    };
+  }
+  persistActive();                           // durable + cloud sync
+};
+OMR.getActiveAnswerKey = function(){
+  // Return an isolated copy so callers can never mutate the stored key.
+  return (active && active.answerKey) ? deepClone(active.answerKey) : null;
+};
 
 // Collected per-student results of the active session, shaped for the NMMS
 // निकालपत्रक Excel auto-fill endpoint (studentId + subjects{} + एकूण total).
