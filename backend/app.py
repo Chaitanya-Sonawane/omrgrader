@@ -20,7 +20,7 @@ import json
 import os
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -43,13 +43,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---- in-memory session state (swap for a DB in production) ----
-STATE = {
-    "answer_key": {},       # {1: 2, 2: 4, ...}
-    "marks_per_correct": 1.0,
-    "negative_marking": 0.0,
-    "results": [],          # list[StudentResult]
-}
+# ---- per-client in-memory state (swap for a DB in production) ----
+# Every user/device gets its OWN isolated bucket of answer key + results, so
+# two people using the app at the same time never share or overwrite each
+# other's data. The bucket is keyed by the client identifier the frontend
+# sends (`X-Client-Id`, one stable id per browser) and falls back to the
+# caller's IP address when no such header is present.
+def _new_state():
+    return {
+        "answer_key": {},       # {1: 2, 2: 4, ...}
+        "marks_per_correct": 1.0,
+        "negative_marking": 0.0,
+        "results": [],          # list[StudentResult]
+    }
+
+
+_STATES: dict[str, dict] = {}
+
+
+def _client_key(request: Request) -> str:
+    """Stable per-user key: prefer the browser's X-Client-Id, else the IP."""
+    cid = request.headers.get("x-client-id")
+    if cid and cid.strip():
+        return "cid:" + cid.strip()
+    # Behind a proxy (Render/Netlify) the real client IP is in X-Forwarded-For.
+    xff = request.headers.get("x-forwarded-for")
+    if xff and xff.strip():
+        return "ip:" + xff.split(",")[0].strip()
+    return "ip:" + (request.client.host if request.client else "unknown")
+
+
+def get_state(request: Request) -> dict:
+    key = _client_key(request)
+    state = _STATES.get(key)
+    if state is None:
+        state = _new_state()
+        _STATES[key] = state
+    return state
 
 
 class AnswerKeyIn(BaseModel):
@@ -59,19 +89,21 @@ class AnswerKeyIn(BaseModel):
 
 
 @app.post("/api/answer-key")
-def set_answer_key(payload: AnswerKeyIn):
-    STATE["answer_key"] = {int(k): v for k, v in payload.answers.items()}
-    STATE["marks_per_correct"] = payload.marks_per_correct
-    STATE["negative_marking"] = payload.negative_marking
-    return {"ok": True, "questions": len(STATE["answer_key"])}
+def set_answer_key(payload: AnswerKeyIn, request: Request):
+    state = get_state(request)
+    state["answer_key"] = {int(k): v for k, v in payload.answers.items()}
+    state["marks_per_correct"] = payload.marks_per_correct
+    state["negative_marking"] = payload.negative_marking
+    return {"ok": True, "questions": len(state["answer_key"])}
 
 
 @app.get("/api/answer-key")
-def get_answer_key():
+def get_answer_key(request: Request):
+    state = get_state(request)
     return {
-        "answers": STATE["answer_key"],
-        "marks_per_correct": STATE["marks_per_correct"],
-        "negative_marking": STATE["negative_marking"],
+        "answers": state["answer_key"],
+        "marks_per_correct": state["marks_per_correct"],
+        "negative_marking": state["negative_marking"],
     }
 
 
@@ -131,6 +163,7 @@ def frame_check_reset(session_id: str = Form("default")):
 
 @app.post("/api/auto-capture")
 async def auto_capture(
+    request: Request,
     file: UploadFile = File(...),
     student_id: str = Form(""),
     student_name: str = Form(""),
@@ -159,15 +192,16 @@ async def auto_capture(
         "warnings": scan_result.warnings,
         "scored": False,
     }
-    if STATE["answer_key"]:
+    state = get_state(request)
+    if state["answer_key"]:
         student_result = score_sheet(
-            scan_result.answers, STATE["answer_key"],
-            marks_per_correct=STATE["marks_per_correct"],
-            negative_marking=STATE["negative_marking"],
+            scan_result.answers, state["answer_key"],
+            marks_per_correct=state["marks_per_correct"],
+            negative_marking=state["negative_marking"],
             student_id=student_id, student_name=student_name,
         )
         student_result.quality_warnings = scan_result.warnings
-        STATE["results"].append(student_result)
+        state["results"].append(student_result)
         out.update(_student_result_to_dict(student_result))
         out["scored"] = True
     return out
@@ -189,11 +223,13 @@ async def scan(file: UploadFile = File(...)):
 
 @app.post("/api/scan-and-score")
 async def scan_and_score(
+    request: Request,
     file: UploadFile = File(...),
     student_id: str = Form(""),
     student_name: str = Form(""),
 ):
-    if not STATE["answer_key"]:
+    state = get_state(request)
+    if not state["answer_key"]:
         raise HTTPException(400, "No answer key set. POST /api/answer-key first.")
     content = await file.read()
     try:
@@ -202,13 +238,13 @@ async def scan_and_score(
         raise HTTPException(400, str(e))
 
     student_result = score_sheet(
-        scan_result.answers, STATE["answer_key"],
-        marks_per_correct=STATE["marks_per_correct"],
-        negative_marking=STATE["negative_marking"],
+        scan_result.answers, state["answer_key"],
+        marks_per_correct=state["marks_per_correct"],
+        negative_marking=state["negative_marking"],
         student_id=student_id, student_name=student_name,
     )
     student_result.quality_warnings = scan_result.warnings
-    STATE["results"].append(student_result)
+    state["results"].append(student_result)
 
     out = _student_result_to_dict(student_result)
     out["quality"] = scan_result.quality
@@ -224,8 +260,9 @@ async def scan_and_score(
 
 
 @app.post("/api/batch-scan-and-score")
-async def batch_scan_and_score(files: list[UploadFile] = File(...)):
-    if not STATE["answer_key"]:
+async def batch_scan_and_score(request: Request, files: list[UploadFile] = File(...)):
+    state = get_state(request)
+    if not state["answer_key"]:
         raise HTTPException(400, "No answer key set. POST /api/answer-key first.")
     out = []
     for f in files:
@@ -236,42 +273,45 @@ async def batch_scan_and_score(files: list[UploadFile] = File(...)):
             out.append({"filename": f.filename, "error": str(e)})
             continue
         student_result = score_sheet(
-            scan_result.answers, STATE["answer_key"],
-            marks_per_correct=STATE["marks_per_correct"],
-            negative_marking=STATE["negative_marking"],
+            scan_result.answers, state["answer_key"],
+            marks_per_correct=state["marks_per_correct"],
+            negative_marking=state["negative_marking"],
             student_id=f.filename, student_name="",
         )
         student_result.quality_warnings = scan_result.warnings
-        STATE["results"].append(student_result)
+        state["results"].append(student_result)
         d = _student_result_to_dict(student_result)
         d["filename"] = f.filename
         d["warnings"] = scan_result.warnings
         out.append(d)
 
-    dash = batch_dashboard(STATE["results"])
+    dash = batch_dashboard(state["results"])
     return {"results": out, "dashboard": dash}
 
 
 @app.get("/api/results")
-def get_results():
-    dash = batch_dashboard(STATE["results"]) if STATE["results"] else {}
+def get_results(request: Request):
+    state = get_state(request)
+    dash = batch_dashboard(state["results"]) if state["results"] else {}
     return {
-        "results": [_student_result_to_dict(r) for r in STATE["results"]],
+        "results": [_student_result_to_dict(r) for r in state["results"]],
         "dashboard": dash,
     }
 
 
 @app.delete("/api/results")
-def clear_results():
-    STATE["results"] = []
+def clear_results(request: Request):
+    state = get_state(request)
+    state["results"] = []
     return {"ok": True}
 
 
 @app.get("/api/export/excel")
-def export_excel():
-    if not STATE["results"]:
+def export_excel(request: Request):
+    state = get_state(request)
+    if not state["results"]:
         raise HTTPException(400, "No results to export yet.")
-    data = build_excel_report(STATE["results"])
+    data = build_excel_report(state["results"])
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -307,11 +347,12 @@ def export_nmms_template_filled(payload: NmmsFillIn):
 
 
 @app.get("/api/export/pdf")
-def export_pdf():
-    if not STATE["results"]:
+def export_pdf(request: Request):
+    state = get_state(request)
+    if not state["results"]:
         raise HTTPException(400, "No results to export yet.")
-    dash = batch_dashboard(STATE["results"])
-    data = build_pdf_report(STATE["results"], dash)
+    dash = batch_dashboard(state["results"])
+    data = build_pdf_report(state["results"], dash)
     return StreamingResponse(
         io.BytesIO(data),
         media_type="application/pdf",

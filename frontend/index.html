@@ -671,7 +671,31 @@ const sleep = (ms)=> new Promise(r=> setTimeout(r, ms));
 // requests and return an HTML "you are about to visit..." warning page instead
 // of the real API response. Sending this header on every request skips that
 // interstitial so we always get JSON back. It is harmless for other backends.
-const API_HEADERS = {"ngrok-skip-browser-warning": "true"};
+// A stable per-browser client id so the backend can keep every user's/device's
+// answer key + scored results in their OWN isolated bucket (two people using
+// the app at the same time never share or overwrite each other's data). It is
+// generated once and persisted in localStorage; the backend falls back to the
+// caller's IP address if this header is ever missing.
+const CLIENT_ID_STORE = "omr_client_id_v1";
+function getClientId(){
+  try{
+    let id = localStorage.getItem(CLIENT_ID_STORE);
+    if(!id){
+      id = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : ("c-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2));
+      localStorage.setItem(CLIENT_ID_STORE, id);
+    }
+    return id;
+  }catch(_){
+    // Private mode / storage disabled: fall back to a per-tab id.
+    if(!window.__omrClientId){
+      window.__omrClientId = "c-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+    }
+    return window.__omrClientId;
+  }
+}
+const API_HEADERS = {"ngrok-skip-browser-warning": "true", "X-Client-Id": getClientId()};
 // Merge API_HEADERS into a caller-supplied fetch options object (non-mutating).
 function withApiHeaders(opts){
   opts = opts || {};
@@ -1142,7 +1166,7 @@ async function doAutoCapture(){
     fd.append("file", selectedFile);
     fd.append("student_id", document.getElementById("studentId").value);
     fd.append("student_name", document.getElementById("studentName").value);
-    const res = await fetch(await apiUrl("/api/auto-capture"), {method:"POST", body: fd});
+    const res = await fetch(await apiUrl("/api/auto-capture"), withApiHeaders({method:"POST", body: fd}));
     const data = await parseJSON(res);
     if(!res.ok){
       statusEl.textContent = "Auto-capture scan failed: "+(data.detail||JSON.stringify(data));
@@ -1492,7 +1516,22 @@ async function openExport(kind){
       await downloadNmmsExcel();
       return;
     }
-    window.open(await apiUrl("/api/export/"+kind), "_blank");
+    // Fetch with the X-Client-Id header (a plain window.open/link would NOT
+    // send it, so the download would hit the wrong per-user bucket). Then
+    // trigger the browser download from the returned blob.
+    const res = await fetchWithRetry(await apiUrl("/api/export/"+kind), {method:"GET"});
+    if(!res.ok){
+      const data = await parseJSON(res).catch(()=>({}));
+      alert("Could not export: " + (data.detail || res.status));
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = kind === "pdf" ? "omr_results.pdf" : "omr_results.xlsx";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
   }catch(err){
     alert(friendlyFetchError(err));
   }
